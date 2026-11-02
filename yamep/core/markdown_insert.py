@@ -18,6 +18,98 @@ def next_footnote_number(editor):
     return max(used) + 1 if used else 1
 
 
+def prefix_selected_lines(editor, prefix_for):
+    """
+    Start each selected line with `prefix_for(n)`, as one undoable edit.
+
+    n counts the lines that are not blank. A selection ending at the very
+    start of a line does not include that line.
+    """
+    cursor = editor.textCursor()
+    document = editor.document()
+    block = document.findBlock(cursor.selectionStart())
+    last = document.findBlock(cursor.selectionEnd())
+    if last != block and cursor.selectionEnd() == last.position():
+        last = last.previous()
+
+    cursor.beginEditBlock()
+    count = 0
+    while True:
+        if block.text().strip():
+            edit = QTextCursor(cursor)
+            edit.setPosition(block.position())
+            edit.insertText(prefix_for(count))
+            count += 1
+        if block == last:
+            break
+        block = block.next()
+    cursor.endEditBlock()
+
+
+def bullet_prefix(_index):
+    return "- "
+
+
+def number_prefix(index):
+    return f"{index + 1}. "
+
+
+def task_prefix(_index):
+    return "- [ ] "
+
+
+def collapse_to_selection_end(cursor):
+    """Insert after the selection instead of over it."""
+    cursor.setPosition(cursor.selectionEnd())
+
+
+def set_header(editor, level):
+    """Make the current line a heading of `level`, whatever it was before."""
+    editor.setFocus()
+    cursor = editor.textCursor()
+    cursor.movePosition(QTextCursor.StartOfBlock)
+    existing = re.match(r'#{1,6}\s+', cursor.block().text())
+    if existing:
+        cursor.movePosition(
+            QTextCursor.Right, QTextCursor.KeepAnchor, existing.end())
+    cursor.insertText('#' * level + ' ')
+    editor.setTextCursor(cursor)
+
+
+def wrap_or_insert(editor, before, after, sample):
+    """Wrap the selection; with none, insert `sample`."""
+    editor.setFocus()
+    cursor = editor.textCursor()
+    if cursor.hasSelection():
+        cursor.insertText(f"{before}{cursor.selectedText()}{after}")
+    else:
+        cursor.insertText(sample)
+    editor.setTextCursor(cursor)
+
+
+def make_image_syntax(editor):
+    editor.setFocus()
+    cursor = editor.textCursor()
+    alt = cursor.selectedText() if cursor.hasSelection() else ""
+    cursor.insertText(f"![{alt}](image_path)")
+    if not alt:
+        cursor.movePosition(QTextCursor.Left, QTextCursor.MoveAnchor, 13)
+    editor.setTextCursor(cursor)
+
+
+def insert_footnote(editor, ref):
+    editor.setFocus()
+    cursor = editor.textCursor()
+    collapse_to_selection_end(cursor)
+    cursor.insertText(ref)
+
+    end_cursor = editor.textCursor()
+    end_cursor.movePosition(QTextCursor.End)
+    end_cursor.insertText(f"\n{ref}: ")
+
+    editor.setTextCursor(cursor)
+
+
 def insert_syntax(cursor, before, after="", placeholder=""):
     if cursor.hasSelection():
         selected_text = cursor.selectedText()
@@ -62,13 +154,7 @@ def make_code(editor):
 
 
 def make_header(editor, level):
-    editor.setFocus()
-    levels = ['# ', '## ', '### ', '#### ', '##### ', '###### ']
-    header = levels[level - 1]
-    cursor = editor.textCursor()
-    cursor.movePosition(QTextCursor.StartOfBlock)
-    cursor.insertText(header)
-    editor.setTextCursor(cursor)
+    set_header(editor, level)
 
 
 def make_fenced_code(editor):
@@ -87,17 +173,11 @@ def make_fenced_code(editor):
 
 
 def make_superscript(editor):
-    editor.setFocus()
-    cursor = editor.textCursor()
-    cursor.insertText("X^2^")
-    editor.setTextCursor(cursor)
+    wrap_or_insert(editor, "^", "^", "X^2^")
 
 
 def make_subscript(editor):
-    editor.setFocus()
-    cursor = editor.textCursor()
-    cursor.insertText("H~2~O")
-    editor.setTextCursor(cursor)
+    wrap_or_insert(editor, "~", "~", "H~2~O")
 
 
 def make_link(editor):
@@ -107,21 +187,16 @@ def make_link(editor):
 
 
 def make_image(editor):
-    editor.setFocus()
-    cursor = editor.textCursor()
-    cursor.insertText("![](image_path)")
-    cursor.movePosition(QTextCursor.Left, QTextCursor.MoveAnchor, 13)
-    editor.setTextCursor(cursor)
+    make_image_syntax(editor)
 
 
 def make_table(editor):
     editor.setFocus()
     cursor = editor.textCursor()
 
-    if cursor.hasSelection():
-        cursor.removeSelectedText()
-    else:
-        ensure_blank_line_before_block(cursor)
+    # A table has nowhere to put arbitrary text, so it goes below it.
+    collapse_to_selection_end(cursor)
+    ensure_blank_line_before_block(cursor)
 
     table = (
         "| Header 1 | Header 2 |\n"
@@ -147,9 +222,9 @@ def make_unordered_list(editor):
     cursor = editor.textCursor()
 
     if cursor.hasSelection():
-        cursor.removeSelectedText()
-    else:
-        ensure_blank_line_before_block(cursor)
+        prefix_selected_lines(editor, bullet_prefix)
+        return
+    ensure_blank_line_before_block(cursor)
 
     cursor.insertText("- First item\n- Second item\n- Third item\n")
     editor.setTextCursor(cursor)
@@ -160,9 +235,9 @@ def make_ordered_list(editor):
     cursor = editor.textCursor()
 
     if cursor.hasSelection():
-        cursor.removeSelectedText()
-    else:
-        ensure_blank_line_before_block(cursor)
+        prefix_selected_lines(editor, number_prefix)
+        return
+    ensure_blank_line_before_block(cursor)
 
     cursor.insertText("1. First item\n2. Second item\n3. Third item\n")
     editor.setTextCursor(cursor)
@@ -173,9 +248,9 @@ def make_task_list(editor):
     cursor = editor.textCursor()
 
     if cursor.hasSelection():
-        cursor.removeSelectedText()
-    else:
-        ensure_blank_line_before_block(cursor)
+        prefix_selected_lines(editor, task_prefix)
+        return
+    ensure_blank_line_before_block(cursor)
 
     cursor.insertText(
         "- [x] Complete initial setup\n- [ ]"
@@ -184,16 +259,7 @@ def make_task_list(editor):
 
 
 def make_footnote(editor):
-    editor.setFocus()
-    cursor = editor.textCursor()
-    ref = f"[^{next_footnote_number(editor)}]"
-    cursor.insertText(ref)
-
-    end_cursor = editor.textCursor()
-    end_cursor.movePosition(QTextCursor.End)
-    end_cursor.insertText(f"\n{ref}: ")
-
-    editor.setTextCursor(cursor)
+    insert_footnote(editor, f"[^{next_footnote_number(editor)}]")
 
 
 def make_quote(editor):

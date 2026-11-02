@@ -29,8 +29,11 @@ class ConfigManager:
         """Load config from disk."""
         try:
             with open(self.config_path, 'r', encoding='utf-8') as f:
-                self.config = json.load(f)
-                logging.info("Config loaded.")
+                loaded = json.load(f)
+            # Valid JSON is not yet a config: `[]` used to stop the app from
+            # starting at all.
+            self.config = loaded if isinstance(loaded, dict) else {}
+            logging.info("Config loaded.")
         except (FileNotFoundError, json.JSONDecodeError):
             logging.info("Config file doesn't exist.")
             self.config = {}
@@ -52,10 +55,14 @@ class ConfigManager:
         """Store the result of QWidget.saveGeometry() (frame included)."""
         self.config['window_state'] = state.toBase64().data().decode()
 
-    def get_window_state(self):
-        if state_str := self.config.get('window_state'):
-            return QByteArray.fromBase64(state_str.encode())
+    def _get_bytes(self, key):
+        value = self.config.get(key)
+        if value and isinstance(value, str):
+            return QByteArray.fromBase64(value.encode())
         return None
+
+    def get_window_state(self):
+        return self._get_bytes('window_state')
 
     def save_window_geometry(self, geometry: QRect):
         self.config['window_geometry'] = [
@@ -66,16 +73,18 @@ class ConfigManager:
         ]
 
     def get_window_geometry(self):
-        return self.config.get('window_geometry')
+        geometry = self.config.get('window_geometry')
+        if (isinstance(geometry, list) and len(geometry) == 4
+                and all(isinstance(n, int) for n in geometry)):
+            return geometry
+        return None
 
     # Splitter state management
     def save_splitter_state(self, name: str, state: QByteArray):
         self.config[f'{name}_state'] = state.toBase64().data().decode()
 
     def get_splitter_state(self, name: str):
-        if state_str := self.config.get(f'{name}_state'):
-            return QByteArray.fromBase64(state_str.encode())
-        return None
+        return self._get_bytes(f'{name}_state')
 
     # File tree state management
     def save_file_tree_state(self, expanded_paths: list, scroll_pos: int):
@@ -83,7 +92,7 @@ class ConfigManager:
         self.config['tree_scroll_pos'] = scroll_pos
 
     def get_expanded_paths(self):
-        return self.config.get('expanded_paths', [])
+        return self.get_list('expanded_paths')
 
     def get_tree_scroll_pos(self):
         return self.config.get('tree_scroll_pos', 0)
@@ -91,6 +100,10 @@ class ConfigManager:
     # Application settings
     def get_value(self, key, default=None):
         return self.config.get(key, default)
+
+    def get_list(self, key):
+        value = self.config.get(key)
+        return value if isinstance(value, list) else []
 
     def set_value(self, key, value):
         self.config[key] = value
@@ -109,6 +122,4 @@ class ConfigManager:
         self.config['toolbar_state'] = state.toBase64().data().decode()
 
     def get_toolbar_state(self):
-        if state_str := self.config.get('toolbar_state'):
-            return QByteArray.fromBase64(state_str.encode())
-        return QByteArray()
+        return self._get_bytes('toolbar_state') or QByteArray()

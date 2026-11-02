@@ -6,6 +6,12 @@ import logging
 import importlib.resources as pkg_resources
 import os
 
+from PySide6.QtGui import QDesktopServices
+
+# What a link in a note may open. A note can come from anywhere, and the
+# desktop will happily run other schemes, or launchers, for the user.
+EXTERNAL_SCHEMES = ('http', 'https', 'mailto')
+
 
 def load_theme(theme_name):
     """
@@ -40,6 +46,20 @@ def load_icon(icon_name):
     except (FileNotFoundError, ModuleNotFoundError):
         logging.error(f"Icon {icon_name} not found.")
         return None
+
+
+def open_external(url):
+    """Hand a link from a note to the desktop, if it is safe to. """
+    if url.scheme() in EXTERNAL_SCHEMES:
+        return QDesktopServices.openUrl(url)
+    if url.isLocalFile():
+        path = url.toLocalFile()
+        launcher = (path.endswith('.desktop')
+                    or (os.path.isfile(path) and os.access(path, os.X_OK)))
+        if not launcher:
+            return QDesktopServices.openUrl(url)
+    logging.warning(f"Not opening link: {url.toString()}")
+    return False
 
 
 def is_valid_dir(path):

@@ -19,7 +19,8 @@ dependencies = [
     "PySide6",
     "markdown",
     "pymdown-extensions",
-    "platformdirs"
+    "platformdirs",
+    "pygments"
 ]
 
 [project.urls]
@@ -42,4 +43,8 @@ include-package-data = true
 package = false
 
 [dependency-groups]
-dev = ["build"]
+dev = ["build", "pytest"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

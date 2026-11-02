@@ -9,11 +9,11 @@ import sys
 import traceback
 import importlib.resources
 
+from PySide6.QtGui import QIcon, QPixmap, QTextCursor
 from PySide6.QtWidgets import (
     QMainWindow, QSplitter, QTreeView, QFileSystemModel, QFileDialog,
     QMessageBox, QLabel, QProgressBar, QMenu
 )
-from PySide6.QtGui import QIcon, QPixmap, QTextCursor
 from PySide6.QtCore import Qt, QDir, QTimer, QModelIndex
 
 from .editor import MarkdownEditor
@@ -23,7 +23,9 @@ from .shortcuts import ShortcutManager
 from yamep.core.utils import load_icon, load_theme, get_valid_dir
 from .toolbar import ToolbarManager
 from yamep.core.config_manager import ConfigManager
-from yamep.core.file_io import DocumentFileGuard, atomic_write_text
+from yamep.core.file_io import (
+    DocumentFileGuard, atomic_write_text, document_text, markdown_save_path,
+)
 from yamep.core.line_anchors import editor_top_line, scroll_editor_to_line
 from yamep.core.markdown_utils import set_task_checked
 
@@ -108,6 +110,14 @@ class Yamep(QMainWindow):
 
     def _open_initial_file(self):
         """Open the file given on the command line, else the last one used."""
+        if self._file_to_open and not os.path.exists(self._file_to_open):
+            # A new note, as with any editor: created by the first save.
+            self.current_file_path = os.path.abspath(self._file_to_open)
+            self.file_guard.track(self.current_file_path)
+            self.preview.set_base_path(
+                os.path.dirname(self.current_file_path))
+            self.update_window_title()
+            return
         initial = self._file_to_open or self.config_manager.get_value(
             'last_opened_file')
         if initial and os.path.isfile(initial):
@@ -222,17 +232,11 @@ class Yamep(QMainWindow):
         self.preview_progress.hide()
 
         # Set preview visibility from config
-        preview_visible = self.config_manager.get_value('preview_visible', True)
+        preview_visible = bool(
+            self.config_manager.get_value('preview_visible', True))
         self.preview.setVisible(preview_visible)
         self.preview_enabled = preview_visible
-
-        # Sync icon state in toolbar
-        if self.toolbar_manager and self.toolbar_manager.preview_toggle_button:
-            suffix = self._get_theme_icon_suffix()
-            icon_name = f"visibility_off_24dp_{suffix}.png" if preview_visible else f"visibility_24dp_{suffix}.png"
-            icon_path = load_icon(icon_name)
-            self.toolbar_manager.preview_toggle_button.setChecked(preview_visible)
-            self.toolbar_manager.preview_toggle_button.setIcon(QIcon(icon_path))
+        self.update_preview_toggle()
 
         #self.tree_view.header().setSectionResizeMode(0, QHeaderView.Interactive)
         QTimer.singleShot(0, lambda: self.tree_view.setColumnWidth(0, self.tree_view.viewport().width()))
@@ -247,7 +251,7 @@ class Yamep(QMainWindow):
         if not self.preview_enabled:
             return
         self.preview.update_preview(
-            self.editor.toPlainText(),
+            document_text(self.editor),
             self.themes[self.current_theme_index]
         )
 
@@ -372,7 +376,7 @@ class Yamep(QMainWindow):
         if not self.preview_enabled:
             return
 
-        markdown_text = markdown_text or self.editor.toPlainText()
+        markdown_text = markdown_text or document_text(self.editor)
         theme = theme or self.themes[self.current_theme_index]
 
         self.preview.hide()
@@ -390,16 +394,12 @@ class Yamep(QMainWindow):
         self.preview.update_preview(markdown_text, theme, on_finished=on_preview_ready)
 
     def toggle_preview_visibility(self):
-        now_visible = not self.preview.isVisible()
+        # The flag, not isVisible(): load_preview() hides the widget while it
+        # renders, which is not the user turning the preview off.
+        now_visible = not self.preview_enabled
         self.preview.setVisible(now_visible)
         self.preview_enabled = now_visible
-
-        suffix = self._get_theme_icon_suffix()
-        icon_name = f"visibility_off_24dp_{suffix}.png" if now_visible else f"visibility_24dp_{suffix}.png"
-        icon_path = load_icon(icon_name)
-        if self.toolbar_manager and self.toolbar_manager.preview_toggle_button:
-            self.toolbar_manager.preview_toggle_button.setIcon(QIcon(icon_path))
-            self.toolbar_manager.preview_toggle_button.setChecked(now_visible)
+        self.update_preview_toggle()
 
         if now_visible:
             self.load_preview()
@@ -408,6 +408,16 @@ class Yamep(QMainWindow):
             self.preview_loading_label.hide()
             self.preview_progress.hide()
             self.statusBar().hide()
+
+    def update_preview_toggle(self):
+        """Show the preview button's state in the current theme's colours."""
+        button = self.toolbar_manager and self.toolbar_manager.preview_toggle_button
+        if not button:
+            return
+        state = "visibility_off" if self.preview_enabled else "visibility"
+        suffix = self._get_theme_icon_suffix()
+        button.setIcon(QIcon(load_icon(f"{state}_24dp_{suffix}.png")))
+        button.setChecked(self.preview_enabled)
 
     def on_document_modified(self, changed: bool):
         self.update_window_title()
@@ -577,7 +587,7 @@ class Yamep(QMainWindow):
         if self.current_file_path:
             try:
                 if not self.file_guard.save(
-                        self.current_file_path, self.editor.toPlainText()):
+                        self.current_file_path, document_text(self.editor)):
                     return False
 
                 self.editor.document().setModified(False)
@@ -602,10 +612,9 @@ class Yamep(QMainWindow):
         )
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Save File As", start_dir, "Markdown Files (*.md)")
+        file_path = file_path and markdown_save_path(self, file_path)
         if not file_path:
             return False
-        if not file_path.endswith(".md"):
-            file_path += ".md"
 
         previous_path = self.current_file_path
         self.current_file_path = file_path
@@ -614,6 +623,9 @@ class Yamep(QMainWindow):
             self.config_manager.set_value('last_opened_file', file_path)
             self.config_manager.save()
             self.update_window_title()
+            # Saving changes no text, so nothing else would re-render, and
+            # relative images have just moved.
+            self.refresh_preview()
             return True
 
         self.current_file_path = previous_path
@@ -634,21 +646,13 @@ class Yamep(QMainWindow):
             default_dir,
             "Markdown Files (*.md)"
         )
+        file_path = file_path and markdown_save_path(self, file_path)
         if file_path:
-            if not file_path.endswith(".md"):
-                file_path += ".md"
-
-            # Check if file exists
-            if os.path.exists(file_path):
-                confirm = QMessageBox.question(
-                    self,
-                    "File Exists",
-                    f"The file '{os.path.basename(file_path)}' already exists.\nDo you want to overwrite it?",
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.No
-                )
-                if confirm != QMessageBox.Yes:
-                    return
+            # Before anything reaches the disk: cancelling here has to leave
+            # the chosen file exactly as it was.
+            if not self.confirm_discard_changes():
+                return
+            self.editor.document().setModified(False)
 
             try:
                 atomic_write_text(file_path, "")
@@ -739,15 +743,11 @@ class Yamep(QMainWindow):
             logging.error(f"Theme {theme_name} not found in available themes")
             return
 
-        if theme_name == "default":
-            suffix = "5F6368"
-            self.setStyleSheet("")
-        else:
-            suffix = "FFFFFF" if ("dark" in theme_name or "blue" in theme_name) else "5F6368"
-            self.setStyleSheet(load_theme(theme_name))
+        self.setStyleSheet("" if theme_name == "default" else load_theme(theme_name))
 
         if hasattr(self, 'toolbar_manager') and self.toolbar_manager:
-            self.toolbar_manager.update_icons(suffix)
+            self.toolbar_manager.update_icons(self._get_theme_icon_suffix())
+            self.update_preview_toggle()
         else:
             logging.warning("Toolbar manager not initialized when applying theme")
 
@@ -861,7 +861,7 @@ class Yamep(QMainWindow):
         self.config_manager.set_value(
             'toolbar_state', self.saveState().toBase64().data().decode()
         )
-        self.config_manager.set_value('preview_visible', self.preview.isVisible())
+        self.config_manager.set_value('preview_visible', self.preview_enabled)
 
         self.config_manager.save()
 
@@ -872,5 +872,6 @@ class Yamep(QMainWindow):
     def _get_theme_icon_suffix(self):
         theme = self.themes[self.current_theme_index]
         if theme == "default":
-            return "5F6368"
+            # Follow the system palette, as the preview does.
+            return "FFFFFF" if self.preview.is_system_dark_mode() else "5F6368"
         return "FFFFFF" if "dark" in theme or "blue" in theme else "5F6368"

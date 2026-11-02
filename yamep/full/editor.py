@@ -8,6 +8,9 @@ from PySide6.QtWidgets import QTextEdit
 from PySide6.QtGui import QTextCursor
 from PySide6.QtCore import Signal
 
+from yamep.core import markdown_insert
+from yamep.core.file_io import document_text
+
 
 class MarkdownEditor(QTextEdit):
     """
@@ -32,7 +35,7 @@ class MarkdownEditor(QTextEdit):
         """
         Emit the current text content when the text changes.
         """
-        self.text_updated.emit(self.toPlainText())
+        self.text_updated.emit(document_text(self))
 
     def make_bold(self):
         """
@@ -94,13 +97,7 @@ class MarkdownEditor(QTextEdit):
         """
         Insert a header at the current cursor position.
         """
-        self.setFocus()
-        levels = ['# ', '## ', '### ', '#### ', '##### ', '###### ']
-        header = levels[level - 1]
-        cursor = self.textCursor()
-        cursor.movePosition(QTextCursor.StartOfLine)
-        cursor.insertText(header)
-        self.setTextCursor(cursor)
+        markdown_insert.set_header(self, level)
 
     def make_quote(self):
         self.setFocus()
@@ -127,11 +124,7 @@ class MarkdownEditor(QTextEdit):
         """
         Insert an image syntax at the current cursor position.
         """
-        self.setFocus()
-        cursor = self.textCursor()
-        cursor.insertText("![](image_path)")
-        cursor.movePosition(QTextCursor.Left, QTextCursor.MoveAnchor, 13)
-        self.setTextCursor(cursor)
+        markdown_insert.make_image_syntax(self)
 
     def make_unordered_list(self):
         """
@@ -141,9 +134,10 @@ class MarkdownEditor(QTextEdit):
         cursor = self.textCursor()
 
         if cursor.hasSelection():
-            cursor.removeSelectedText()
-        else:
-            self.ensure_blank_line_before_block(cursor)
+            markdown_insert.prefix_selected_lines(
+                self, markdown_insert.bullet_prefix)
+            return
+        self.ensure_blank_line_before_block(cursor)
 
         cursor.insertText("- First item\n- Second item\n- Third item\n")
         self.setTextCursor(cursor)
@@ -156,9 +150,10 @@ class MarkdownEditor(QTextEdit):
         cursor = self.textCursor()
 
         if cursor.hasSelection():
-            cursor.removeSelectedText()
-        else:
-            self.ensure_blank_line_before_block(cursor)
+            markdown_insert.prefix_selected_lines(
+                self, markdown_insert.number_prefix)
+            return
+        self.ensure_blank_line_before_block(cursor)
 
         cursor.insertText("1. First item\n2. Second item\n3. Third item\n")
         self.setTextCursor(cursor)
@@ -171,9 +166,10 @@ class MarkdownEditor(QTextEdit):
         cursor = self.textCursor()
 
         if cursor.hasSelection():
-            cursor.removeSelectedText()
-        else:
-            self.ensure_blank_line_before_block(cursor)
+            markdown_insert.prefix_selected_lines(
+                self, markdown_insert.task_prefix)
+            return
+        self.ensure_blank_line_before_block(cursor)
 
         cursor.insertText(
             "- [x] Complete initial setup\n- "
@@ -191,28 +187,21 @@ class MarkdownEditor(QTextEdit):
         """
         Insert superscript text at the current cursor position.
         """
-        self.setFocus()
-        cursor = self.textCursor()
-        cursor.insertText("X^2^")
-        self.setTextCursor(cursor)
+        markdown_insert.wrap_or_insert(self, "^", "^", "X^2^")
 
     def make_subscript(self):
         """
         Insert subscript text at the current cursor position.
         """
-        self.setFocus()
-        cursor = self.textCursor()
-        cursor.insertText("H~2~O")
-        self.setTextCursor(cursor)
+        markdown_insert.wrap_or_insert(self, "~", "~", "H~2~O")
 
     def make_table(self):
         self.setFocus()
         cursor = self.textCursor()
 
-        if cursor.hasSelection():
-            cursor.removeSelectedText()
-        else:
-            self.ensure_blank_line_before_block(cursor)
+        # A table has nowhere to put arbitrary text, so it goes below it.
+        markdown_insert.collapse_to_selection_end(cursor)
+        self.ensure_blank_line_before_block(cursor)
 
         table = (
             "| Header 1 | Header 2 |\n"
@@ -244,17 +233,8 @@ class MarkdownEditor(QTextEdit):
         return max(used) + 1 if used else 1
 
     def make_footnote(self):
-        self.setFocus()
-        cursor = self.textCursor()
-        ref = f"[^{self.next_footnote_number()}]"
-        cursor.insertText(ref)
-
-        # Add footnote definition at end
-        end_cursor = self.textCursor()
-        end_cursor.movePosition(QTextCursor.End)
-        end_cursor.insertText(f"\n{ref}: ")
-
-        self.setTextCursor(cursor)
+        markdown_insert.insert_footnote(
+            self, f"[^{self.next_footnote_number()}]")
 
     def ensure_blank_line_before_block(self, cursor):
         """

@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from PySide6.QtWidgets import QToolBar, QToolButton, QComboBox
+from PySide6.QtWidgets import QComboBox, QMenu, QToolBar, QToolButton
 from PySide6.QtGui import QIcon
 from yamep.core.utils import load_icon
 
@@ -50,6 +50,13 @@ class ToolbarManager:
             self.app_toolbar.addWidget(btn)
             self._buttons.append((btn, icon_base, tooltip))
 
+            if tooltip == "Save":
+                # Save As shares the button, behind its drop-down arrow.
+                menu = QMenu(btn)
+                menu.addAction(
+                    "Save As...", self.main_window.save_file_as)
+                btn.setMenu(menu)
+                btn.setPopupMode(QToolButton.MenuButtonPopup)
             if tooltip == "Delete File":
                 btn.setEnabled(False)
                 self.delete_button = btn

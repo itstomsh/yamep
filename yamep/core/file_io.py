@@ -31,6 +31,9 @@ from PySide6.QtWidgets import QMessageBox
 # by a rename, size and mtime when it is rewritten in place.
 FileSignature = namedtuple('FileSignature', 'device inode size mtime_ns')
 
+# Line ending of a file that has none yet.
+DEFAULT_NEWLINE = '\n'
+
 # How long a changed file has to stay unchanged before it is acted on. An
 # in-place writer truncates the file first and fills it afterwards; reloading
 # in between would put an empty or partial note into the editor.
@@ -51,16 +54,65 @@ def file_signature(path):
         return None
 
 
-def read_text(path, encoding='utf-8'):
+def _dominant_newline(raw):
+    crlf = raw.count('\r\n')
+    lf = raw.count('\n') - crlf
+    return '\r\n' if crlf > lf else DEFAULT_NEWLINE
+
+
+def read_document(path, encoding='utf-8'):
     """
-    Return (text, signature) for `path`.
+    Return (text, signature, newline) for `path`.
+
+    `text` always uses \\n, which is what the editor works with; `newline` is
+    the file's own line ending, so a save can put it back. Translating it
+    away for good rewrote every line of a Windows note in the sync history.
 
     The signature is taken before reading, so a write that races the read
     leaves the file looking changed instead of slipping by unnoticed.
     """
     signature = file_signature(path)
-    with open(path, 'r', encoding=encoding) as f:
-        return f.read(), signature
+    with open(path, 'r', encoding=encoding, newline='') as f:
+        raw = f.read()
+    text = raw.replace('\r\n', '\n').replace('\r', '\n')
+    return text, signature, _dominant_newline(raw)
+
+
+def read_text(path, encoding='utf-8'):
+    """Return (text, signature) for `path`."""
+    return read_document(path, encoding)[:2]
+
+
+def document_text(editor):
+    """
+    The editor's text, character for character.
+
+    QTextEdit.toPlainText() is not that: it turns no-break spaces into spaces
+    and U+2028 into a line break, so a save would change them in the file.
+    """
+    return editor.document().toRawText().replace('\u2029', '\n')
+
+
+def markdown_save_path(parent, path):
+    """
+    The file a save dialog's `path` really means, or None to give up.
+
+    The dialog only asked about overwriting the name it was given. Adding the
+    extension afterwards can land on another, existing file, so that one has
+    to be confirmed here.
+    """
+    if path.lower().endswith('.md'):
+        return path
+    final = path + '.md'
+    if os.path.exists(final):
+        reply = QMessageBox.question(
+            parent, "File Exists",
+            f"The file '{os.path.basename(final)}' already exists.\n"
+            "Do you want to overwrite it?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply != QMessageBox.Yes:
+            return None
+    return final
 
 
 def _default_file_mode():
@@ -85,7 +137,15 @@ def _fsync_directory(directory):
         os.close(fd)
 
 
-def atomic_write_text(path, text, encoding='utf-8'):
+def _write_in_place(target, data):
+    with open(target, 'wb') as f:
+        f.write(data)
+        f.flush()
+        os.fsync(f.fileno())
+        return _signature_of(os.fstat(f.fileno()))
+
+
+def atomic_write_text(path, text, encoding='utf-8', newline=DEFAULT_NEWLINE):
     """
     Replace the contents of `path` with `text` in a single step.
 
@@ -93,21 +153,36 @@ def atomic_write_text(path, text, encoding='utf-8'):
     link's target is replaced, not the link. Returns the signature of the
     written file, read from the file itself before the rename, so a change
     landing right after the rename still counts as someone else's.
+
+    A rename cannot serve two cases, which are written in place instead: a
+    hard-linked note, whose other names would keep the old text, and a
+    writable note in a folder that only allows changing existing files.
     """
+    # Encoded first, so text that cannot be written costs nothing on disk.
+    data = text.replace('\n', newline).encode(encoding)
     target = os.path.realpath(path)
     directory = os.path.dirname(target)
     try:
-        mode = stat.S_IMODE(os.stat(target).st_mode)
+        st = os.stat(target)
     except FileNotFoundError:
-        mode = _default_file_mode()
+        st = None
+    mode = stat.S_IMODE(st.st_mode) if st else _default_file_mode()
+    if st and st.st_nlink > 1:
+        return _write_in_place(target, data)
 
     # Hidden and tilde-suffixed, the usual convention for an editor's
-    # temporary file, for the moment it exists.
-    fd, tmp_path = tempfile.mkstemp(
-        dir=directory, prefix=f'.{os.path.basename(target)}.', suffix='~')
+    # temporary file, for the moment it exists. The note's name stays out of
+    # it: with a prefix and a suffix around it, a long name would not fit.
     try:
-        with os.fdopen(fd, 'w', encoding=encoding) as f:
-            f.write(text)
+        fd, tmp_path = tempfile.mkstemp(
+            dir=directory, prefix='.yamep-save-', suffix='~')
+    except PermissionError:
+        if st and os.access(target, os.W_OK):
+            return _write_in_place(target, data)
+        raise
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(data)
             f.flush()
             os.fsync(f.fileno())
             signature = _signature_of(os.fstat(f.fileno()))
@@ -149,8 +224,10 @@ class DocumentFileGuard(QObject):
         self._window = window
         self._editor = editor
         self._path = None
+        self._link = None
         self._name = ''
         self._known = None
+        self._newline = DEFAULT_NEWLINE
         self._pending = _UNSET
         self._prompting = False
 
@@ -165,8 +242,9 @@ class DocumentFileGuard(QObject):
 
     def open(self, path):
         """Read `path`, start guarding it and return its text."""
-        text, signature = read_text(path)
+        text, signature, newline = read_document(path)
         self.track(path, signature)
+        self._newline = newline
         return text
 
     def save(self, path, text):
@@ -177,9 +255,12 @@ class DocumentFileGuard(QObject):
         changed on disk since it was loaded, and the user declines to
         overwrite it. Raises OSError if the write itself fails.
         """
-        if self._is_guarded(path) and not self._confirm_overwrite(text):
+        guarded = self._is_guarded(path)
+        if guarded and not self._confirm_overwrite(text):
             return False
-        self.track(path, atomic_write_text(path, text))
+        newline = self._newline if guarded else DEFAULT_NEWLINE
+        self.track(path, atomic_write_text(path, text, newline=newline))
+        self._newline = newline
         return True
 
     def track(self, path, signature=None):
@@ -188,7 +269,10 @@ class DocumentFileGuard(QObject):
         # Watch the real file: for a symlinked note, the folder that sees the
         # rename is the target's folder, not the link's.
         self._path = os.path.realpath(path)
+        # The name it was opened by: a symlink can be pointed elsewhere.
+        self._link = os.path.abspath(path)
         self._name = os.path.basename(path)
+        self._newline = DEFAULT_NEWLINE
         self._known = (
             file_signature(self._path) if signature is None else signature)
         self._pending = _UNSET
@@ -199,17 +283,35 @@ class DocumentFileGuard(QObject):
         self._unwatch()
         self._settle.stop()
         self._path = None
+        self._link = None
         self._known = None
         self._pending = _UNSET
 
     # -- Watching -----------------------------------------------------------
 
     def _is_guarded(self, path):
-        return self._path is not None and os.path.realpath(path) == self._path
+        return self._path is not None and (
+            os.path.abspath(path) == self._link
+            or os.path.realpath(path) == self._path)
+
+    def _follow_link(self):
+        """
+        Move to the file a repointed symlink now names.
+
+        The signature on record belongs to the old target, so the new one
+        counts as changed and takes the same path as any other change.
+        """
+        target = os.path.realpath(self._link)
+        if target != self._path:
+            self._unwatch()
+            self._path = target
+            self._watch()
 
     def _watch(self):
         watched = set(self._watcher.files()) | set(self._watcher.directories())
-        for candidate in (self._path, os.path.dirname(self._path)):
+        candidates = (self._path, os.path.dirname(self._path),
+                      os.path.dirname(self._link))
+        for candidate in candidates:
             if candidate not in watched and os.path.exists(candidate):
                 self._watcher.addPath(candidate)
 
@@ -225,7 +327,13 @@ class DocumentFileGuard(QObject):
     def _check(self):
         if self._path is None:
             return
-        signature = file_signature(self._path)
+        self._follow_link()
+        try:
+            signature = file_signature(self._path)
+        except OSError as e:
+            # Say a folder lost its permissions: nothing is known either way.
+            logging.warning(f"Could not check {self._path}: {e}")
+            return
         if self._pending is _UNSET and signature == self._known:
             # Another file in the folder changed, or our own save came back.
             self._watch()
@@ -249,20 +357,22 @@ class DocumentFileGuard(QObject):
 
     def _on_changed(self):
         try:
-            text, signature = read_text(self._path)
+            text, signature, newline = read_document(self._path)
         except (OSError, UnicodeError) as e:
             logging.warning(f"Could not read changed file {self._path}: {e}")
             return
 
         document = self._editor.document()
-        if text == self._editor.toPlainText():
+        if text == document_text(self._editor):
             # Touched, or saved elsewhere with identical content.
             self._known = signature
+            self._newline = newline
             document.setModified(False)
             return
 
         if not document.isModified():
             self._replace_text(text, signature)
+            self._newline = newline
             self.notice.emit(f"{self._name} changed on disk and was reloaded")
             return
 
@@ -275,11 +385,12 @@ class DocumentFileGuard(QObject):
         if reload:
             # Read again: the file may have moved on while the dialog was up.
             try:
-                text, signature = read_text(self._path)
+                text, signature, newline = read_document(self._path)
             except (OSError, UnicodeError) as e:
                 logging.warning(f"Could not reload {self._path}: {e}")
                 return
             self._replace_text(text, signature)
+            self._newline = newline
             self.notice.emit(
                 f"{self._name} reloaded - Ctrl+Z brings your edits back")
         else:
@@ -317,6 +428,7 @@ class DocumentFileGuard(QObject):
         self._known = signature
 
     def _confirm_overwrite(self, text):
+        self._follow_link()
         on_disk = file_signature(self._path)
         if on_disk is None or on_disk == self._known:
             return True

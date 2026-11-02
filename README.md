@@ -41,9 +41,11 @@ full build if you want images and the more faithful preview.
   from, as one undoable change
 - Scroll sync anchored to source lines, so an image or a large heading cannot
   push the two panes apart
+- Save As with Ctrl+Shift+S, or the arrow on the full build's Save button
 - Light, dark, blue, and a theme that follows the system
 - Opens a file given on the command line, so `.md` files can be opened with
-  Yamep straight from a file manager
+  Yamep straight from a file manager; a name that does not exist yet becomes a
+  new note on the first save
 
 ### Notes that survive a sync client
 
@@ -51,13 +53,22 @@ Notes often live in a folder something else is writing to. Yamep handles that:
 
 - **Saves are atomic.** The text goes to a temporary file that is then renamed
   over the note, so a sync client never uploads a half-written file. File
-  permissions are kept, and a symlinked note stays a symlink.
+  permissions and line endings are kept, and a symlinked note stays a symlink.
+  A hard-linked note, or one in a folder that only allows changing existing
+  files, is written in place instead, because a rename cannot serve those.
 - **Changes made on disk are noticed.** If a note changes while it is open and
   you have no unsaved edits, it is reloaded; if you do have edits, Yamep asks
   which version to keep. Reloading is undoable.
 - **A deleted note is not lost.** If the file disappears while it is open, the
   text stays in the editor and the document is marked modified, so closing
   offers to save it again.
+
+### Notes from elsewhere
+
+A note is treated as a document, not a program. The preview does not run
+scripts from a note, and links only open `http`, `https`, `mailto` and ordinary
+local files. Images are the exception: the full build loads remote images
+in the preview, so opening a note can tell their server that it was opened.
 
 ## Screenshots
 
@@ -89,7 +100,8 @@ built in any order.
 
 ### From source
 
-Python 3.9 or newer, and PySide6, Markdown, pymdown-extensions and platformdirs.
+Python 3.9 or newer, and PySide6, Markdown, pymdown-extensions, platformdirs and,
+for syntax highlighting in the full build, Pygments.
 With [uv](https://docs.astral.sh/uv/), which creates `.venv` from `uv.lock` on the
 first run:
 
@@ -131,6 +143,9 @@ flatpak/        Flatpak manifests, desktop entries, AppStream metadata, icons
 
 `build-full.sh` and `build-lite.sh` build a wheel and an sdist for one variant
 each, into `dist/`.
+
+`uv run pytest` runs the tests. They need no display: they use Qt's offscreen
+platform and a temporary config folder, and drive a real QtWebEngine page.
 
 This project was developed with assistance from AI tools, including Claude
 (Anthropic), for parts of the code, bug fixing and packaging.

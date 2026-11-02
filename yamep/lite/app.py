@@ -7,12 +7,17 @@ import os
 import re
 import importlib.resources
 
+import urllib.parse
+import xml.etree.ElementTree as etree
+
 import markdown
+from markdown import Extension
+from markdown.treeprocessors import Treeprocessor
 from PySide6.QtCore import (
     QEvent, QPointF, QRectF, QSize, Qt, QTimer, QUrl
 )
 from PySide6.QtGui import (
-    QColor, QDesktopServices, QIcon, QKeySequence, QMovie, QPainter,
+    QColor, QIcon, QKeySequence, QMovie, QPainter,
     QPainterPath, QPalette, QPen, QPixmap, QShortcut, QTextCursor
 )
 from PySide6.QtWidgets import (
@@ -23,15 +28,17 @@ from PySide6.QtWidgets import (
 
 from yamep.core import markdown_insert
 from yamep.core.config_manager import ConfigManager
-from yamep.core.file_io import DocumentFileGuard, atomic_write_text
+from yamep.core.file_io import (
+    DocumentFileGuard, atomic_write_text, document_text, markdown_save_path,
+)
 from yamep.core.line_anchors import (
     ANCHOR_MARKER, add_line_markers, anchor_line_for_y, anchor_y_for_line,
     document_line_anchors, editor_top_line, scroll_editor_to_line,
 )
 from yamep.core.markdown_utils import (
-    TasklistExtension, set_task_checked, task_lines,
+    TasklistExtension, set_task_checked, task_lines, task_states,
 )
-from yamep.core.utils import load_theme
+from yamep.core.utils import load_theme, open_external
 
 APP_NAME = "yamep lite"
 
@@ -54,7 +61,66 @@ EM_MARGIN = re.compile(
 BLOCK_TAGS = re.compile(r'\b(p|ul|ol|li|blockquote)\b', re.IGNORECASE)
 MAX_BLOCK_MARGIN_EM = 0.3
 
-IMAGE_EXTENSIONS = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.svg')
+IMAGE_EXTENSIONS = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.svg', '.webp')
+
+URI_SCHEME = re.compile(r'^[a-zA-Z][a-zA-Z0-9+.-]+:')
+
+
+def image_link_target(source, base_dir):
+    """Where a Markdown image points: its URI, or a file:// URL."""
+    if URI_SCHEME.match(source):
+        return source
+    path = urllib.parse.unquote(source)
+    if not os.path.isabs(path):
+        path = os.path.join(base_dir, path)
+    return QUrl.fromLocalFile(os.path.abspath(path)).toString()
+
+
+class ImageLinkTreeprocessor(Treeprocessor):
+    """
+    Turn images into links to the viewer: Qt's rich text would lay them out
+    at full size in the middle of the text.
+
+    Done on the parsed tree rather than on the source, so that an image shown
+    as an example in a code block stays an example, and titles, reference
+    style images and images inside a link all work.
+    """
+
+    def __init__(self, md, base_dir):
+        super().__init__(md)
+        self.base_dir = base_dir
+
+    def run(self, root):
+        for parent in root.iter():
+            for index, child in enumerate(list(parent)):
+                if child.tag != 'img':
+                    continue
+                label = f"Image: {child.get('alt', '')}"
+                if parent.tag == 'a':
+                    # Already a link, and links do not nest.
+                    replacement = etree.Element('span')
+                else:
+                    replacement = etree.Element('a', {
+                        'href': image_link_target(
+                            child.get('src', ''), self.base_dir),
+                        'style': 'text-decoration:none;',
+                    })
+                replacement.text = label
+                replacement.tail = child.tail
+                parent.remove(child)
+                parent.insert(index, replacement)
+        return root
+
+
+class ImageLinkExtension(Extension):
+    def __init__(self, base_dir):
+        super().__init__()
+        self.base_dir = base_dir
+
+    def extendMarkdown(self, md):
+        # After the inline patterns, which is what creates the images.
+        md.treeprocessors.register(
+            ImageLinkTreeprocessor(md, self.base_dir), 'yamep_images', 14)
 
 # QTextBrowser ignores `a { color }` from the document's stylesheet, and
 # setting the palette's link colour does not reach it either - measured, both
@@ -212,7 +278,7 @@ class YamepLite(QWidget):
         # the window frame; setGeometry(self.geometry()) loses it, which made
         # the window drift down-right on every start.
         window_state = self.config_manager.get_window_state()
-        geometry = self.config_manager.get_value('window_geometry')
+        geometry = self.config_manager.get_window_geometry()
         if window_state:
             self.restoreGeometry(window_state)
         elif geometry:
@@ -280,6 +346,9 @@ class YamepLite(QWidget):
         editor_tab.setLayout(editor_layout)
 
         self.editor = QTextEdit()
+        # The file is plain text: formatting pasted from a web page would only
+        # show here, and images would come out as U+FFFC.
+        self.editor.setAcceptRichText(False)
         editor_layout.addWidget(self.editor)
         self.editor_scrollbar = self.editor.verticalScrollBar()
 
@@ -443,10 +512,19 @@ class YamepLite(QWidget):
             self.refresh_button.setVisible(False)
 
         # Open last opened file
-        initial_file = self._file_to_open or self.config_manager.get_value(
-            'last_opened_file', '')
-        if initial_file and os.path.isfile(initial_file):
-            self.open_file_in_editor(file_path=os.path.abspath(initial_file))
+        if self._file_to_open and not os.path.exists(self._file_to_open):
+            # A new note, as with any editor: created by the first save.
+            self.current_file_path = os.path.abspath(self._file_to_open)
+            self.file_guard.track(self.current_file_path)
+            self.editor_tabs.setTabText(
+                0, os.path.basename(self.current_file_path))
+            self.update_window_title()
+        else:
+            initial_file = self._file_to_open or self.config_manager.get_value(
+                'last_opened_file', '')
+            if initial_file and os.path.isfile(initial_file):
+                self.open_file_in_editor(
+                    file_path=os.path.abspath(initial_file))
 
         # Apply theme. 'default' is kept as-is: rewriting it to a concrete
         # theme here meant the app started up in a different look than the one
@@ -476,6 +554,8 @@ class YamepLite(QWidget):
         # Keyboard shortcuts
         save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
         save_shortcut.activated.connect(self.save_file)
+        save_as_shortcut = QShortcut(QKeySequence("Ctrl+Shift+S"), self)
+        save_as_shortcut.activated.connect(self.save_file_as)
         new_file_shortcut = QShortcut(QKeySequence("Ctrl+N"), self)
         new_file_shortcut.activated.connect(self.create_new_file)
 
@@ -529,12 +609,18 @@ class YamepLite(QWidget):
         desktop. The widget does no navigation of its own, so the rendered
         document stays on screen either way.
         """
-        # Convert the URL into a local file path or string
-        image_path = url.toLocalFile() or url.toString()
+        if url.toString().startswith('#'):
+            # A footnote or a heading in this same note.
+            self.live_preview.scrollToAnchor(url.fragment())
+            return
 
-        # Make sure it ends with a common image extension
+        # Relative links are relative to the note, not to the working folder.
+        url = self.live_preview.document().baseUrl().resolved(url)
+
+        # Only local images have a viewer; the desktop handles the rest.
+        image_path = url.toLocalFile()
         if not image_path.lower().endswith(IMAGE_EXTENSIONS):
-            QDesktopServices.openUrl(url)
+            open_external(url)
             return
 
         # Check if the file actually exists on disk
@@ -687,22 +773,10 @@ class YamepLite(QWidget):
         editor_scroll_position = self.editor_scrollbar.value()
         preview_scroll_position = self.preview_scrollbar.value()
 
-        markdown_text = self.editor.toPlainText()
-
-        def replace_images(match):
-            alt_text, image_path = match.groups()
-            if not os.path.isabs(image_path):
-                base_path = os.path.dirname(
-                    self.current_file_path) if self.current_file_path else os.getcwd()
-                image_path = os.path.abspath(
-                    os.path.join(base_path, image_path))
-            return f'<a href="{image_path}" style="text-decoration:none;">Image: {alt_text}</a>'
-
-        # Anchors first: the marker goes at the end of the line, so the
-        # image pattern below still matches.
-        markdown_text = add_line_markers(markdown_text, ANCHOR_MARKER)
-        image_pattern = re.compile(r'!\[(.*?)\]\(([^)]+)\)')
-        markdown_text = image_pattern.sub(replace_images, markdown_text)
+        markdown_text = add_line_markers(
+            document_text(self.editor), ANCHOR_MARKER)
+        base_dir = (os.path.dirname(self.current_file_path)
+                    if self.current_file_path else os.getcwd())
 
         html = markdown.markdown(
             markdown_text,
@@ -714,6 +788,7 @@ class YamepLite(QWidget):
                 'pymdownx.tilde',
                 'pymdownx.caret',
                 TasklistExtension(),
+                ImageLinkExtension(base_dir),
                 'markdown.extensions.sane_lists',
             ],
         )
@@ -806,13 +881,18 @@ class YamepLite(QWidget):
         the preview is out of step and guessing would edit the wrong line.
         """
         rendered = []
+        ticked = []
         candidate = self.live_preview.document().begin()
         while candidate.isValid():
-            if candidate.text().lstrip().startswith(('☐', '☑')):
+            text = candidate.text().lstrip()
+            if text.startswith(('☐', '☑')):
                 rendered.append(candidate.position())
+                ticked.append(text.startswith('☑'))
             candidate = candidate.next()
-        lines = task_lines(self.editor.toPlainText())
-        if len(rendered) != len(lines) or block.position() not in rendered:
+        source = document_text(self.editor)
+        lines = task_lines(source)
+        if (len(rendered) != len(lines) or block.position() not in rendered
+                or ticked != task_states(source)):
             return None
         return lines[rendered.index(block.position())]
 
@@ -993,8 +1073,7 @@ class YamepLite(QWidget):
 
     def populate_file_tree(self, folder):
         """Populate file tree with contents of selected folder."""
-        expanded_items = set(
-            self.config_manager.get_value('expanded_items', []))
+        expanded_items = set(self.config_manager.get_list('expanded_items'))
         self.file_tree.clear()
 
         root_item = QTreeWidgetItem(self.file_tree, [os.path.basename(folder)])
@@ -1125,8 +1204,8 @@ class YamepLite(QWidget):
         file_name, _ = QFileDialog.getSaveFileName(
             self, "New File", initial_dir, "Markdown Files (*.md)"
         )
+        file_name = file_name and markdown_save_path(self, file_name)
         if file_name:
-            file_name = self.ensure_md_extension(file_name)
             if not self.confirm_discard_changes():
                 return
             try:
@@ -1141,15 +1220,11 @@ class YamepLite(QWidget):
                 self.update_window_title()
                 self.editor.document().setModified(False)
                 self.file_guard.track(file_name, signature)
+                self.config_manager.set_value('last_opened_file', file_name)
+                self.config_manager.save()
             except Exception as e:
                 QMessageBox.warning(
                     self, "Error", f"Failed to create file: {e}")
-
-    def ensure_md_extension(self, file_name):
-        """Ensure file name has .md extension."""
-        if not file_name.lower().endswith('.md'):
-            file_name += '.md'
-        return file_name
 
     def delete_file(self):
         """Delete selected file from file system."""
@@ -1224,12 +1299,8 @@ class YamepLite(QWidget):
                 self.editor.document().setModified(False)
             except Exception as e:
                 QMessageBox.warning(self, "Error", f"Failed to open file: {e}")
-        else:
-            if item:
-                if item.isExpanded():
-                    item.setExpanded(False)
-                else:
-                    item.setExpanded(True)
+        # A folder needs nothing here: the tree toggles it on a double click
+        # by itself, and toggling it again would undo that.
 
     def update_window_title(self):
         """Update window title to reflect current file and modification."""
@@ -1258,7 +1329,7 @@ class YamepLite(QWidget):
         if self.current_file_path:
             try:
                 if not self.file_guard.save(
-                        self.current_file_path, self.editor.toPlainText()):
+                        self.current_file_path, document_text(self.editor)):
                     return False
                 self.editor.document().setModified(False)
                 self.update_window_title()
@@ -1279,12 +1350,20 @@ class YamepLite(QWidget):
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Save File As", initial_dir, "Markdown Files (*.md)"
         )
+        file_path = file_path and markdown_save_path(self, file_path)
         if file_path:
-            file_path = self.ensure_md_extension(file_path)
             previous_path = self.current_file_path
             self.current_file_path = file_path
             if self.save_file():
                 self.editor_tabs.setTabText(0, os.path.basename(file_path))
+                self.config_manager.set_value('last_opened_file', file_path)
+                self.config_manager.save()
+                # Saving changes no text, so nothing else would re-render,
+                # and relative links have just moved.
+                self.update_preview()
+                folder = self.current_working_folder()
+                if folder:
+                    self.populate_file_tree(folder)
                 return True
             # Keep pointing at the file the guard is still watching.
             self.current_file_path = previous_path

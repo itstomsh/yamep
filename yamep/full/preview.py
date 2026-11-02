@@ -2,14 +2,19 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import html as html_escape
 import os
+import secrets
+import urllib.parse
 
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWidgets import QMenu, QApplication
-from PySide6.QtCore import Qt, Signal, QObject, Slot, QEvent, QUrl
-from PySide6.QtGui import QPalette, QDesktopServices
+from PySide6.QtCore import (
+    QFile, QIODevice, Qt, Signal, QObject, Slot, QEvent, QTemporaryDir, QUrl
+)
+from PySide6.QtGui import QPalette
 import markdown
 from markdown.extensions.extra import ExtraExtension
 from markdown.extensions.tables import TableExtension
@@ -19,6 +24,64 @@ import importlib.resources as pkg_resources
 
 from yamep.core.line_anchors import add_line_markers
 from yamep.core.markdown_utils import tag_task_checkboxes
+from yamep.core.utils import open_external
+
+try:
+    from pygments.formatters import HtmlFormatter
+except ImportError:
+    # Code blocks then render plainly, which is all that is lost.
+    HtmlFormatter = None
+
+# setHtml() turns the page into a data: URL, and Chromium drops those beyond
+# 2 MB: the load just fails, and the old text stays on screen. Larger pages go
+# through a temporary file. The figure is for the percent-encoded page, in
+# which every non-ASCII byte takes three.
+SET_HTML_LIMIT = 2 * 1024 * 1024 - 1024
+
+# Pygments palettes that suit each preview stylesheet.
+PYGMENTS_STYLES = {
+    'markdown_style_dark.css': 'monokai',
+    'markdown_style_blue.css': 'monokai',
+    'markdown_style_light.css': 'friendly',
+}
+
+# A note is a document, not a program, and it can come from anywhere. The
+# preview runs with access to local files, so a <script> in a note could read
+# them; only the page's own script, carrying the nonce, may run. connect-src
+# keeps that closed for anything else, and images are the one thing a note may
+# fetch. Everything the policy does not name falls back to 'none'.
+PREVIEW_CSP = (
+    "default-src 'none'; script-src 'nonce-{nonce}'; "
+    "style-src 'unsafe-inline'; img-src * data: file: blob:; "
+    "font-src file: data:; media-src * file: data:; base-uri file:; "
+    "form-action 'none'"
+)
+
+
+def web_channel_js():
+    """
+    Qt's client for the web channel, to go inside the page.
+
+    It cannot be a <script src="qrc:...">: once a local page may load remote
+    images, Chromium no longer lets it load from qrc: either.
+    """
+    source = QFile(':/qtwebchannel/qwebchannel.js')
+    if not source.open(QIODevice.ReadOnly):
+        return ''
+    try:
+        return bytes(source.readAll()).decode('utf-8')
+    finally:
+        source.close()
+
+
+def highlight_css(css_file):
+    """Stylesheet for the token classes Pygments puts into code blocks."""
+    if HtmlFormatter is None:
+        return ''
+    # nobackground: the code surface belongs to the theme's stylesheet.
+    formatter = HtmlFormatter(
+        style=PYGMENTS_STYLES.get(css_file, 'friendly'), nobackground=True)
+    return formatter.get_style_defs('.highlight')
 
 
 # The copy affordance mirrors the lite variant: a small tile inset into the
@@ -144,14 +207,30 @@ COPY_BUTTONS_JS = r"""
 
 class ExternalLinkPage(QWebEnginePage):
     def acceptNavigationRequest(self, url, nav_type, is_main_frame):
-        # If the navigation is triggered by a link click, open it externally.
+        # The preview only ever shows what the application loads into it. A
+        # <meta> refresh in a note, for one, must not replace the page.
+        if nav_type == QWebEnginePage.NavigationTypeTyped:
+            return super().acceptNavigationRequest(
+                url, nav_type, is_main_frame)
         if nav_type == QWebEnginePage.NavigationTypeLinkClicked:
-            QDesktopServices.openUrl(url)
-            return False
-        # If the navigation is triggered by a back/forward action, ignore it.
-        elif nav_type == QWebEnginePage.NavigationTypeBackForward:
-            return False
-        return super().acceptNavigationRequest(url, nav_type, is_main_frame)
+            # The <base> tag makes `#name` a link to the note's folder, so
+            # one that points back at this page has to be caught here.
+            if url.hasFragment() and self._is_this_page(url):
+                self.jump_to_fragment(url.fragment())
+            else:
+                open_external(url)
+        return False
+
+    def _is_this_page(self, url):
+        base = self.view().base_url() if self.view() else QUrl()
+        return url.adjusted(QUrl.RemoveFragment) in (base, self.url())
+
+    def jump_to_fragment(self, fragment):
+        # Quoted, so that the fragment cannot end the string it sits in.
+        target = urllib.parse.quote(fragment)
+        self.runJavaScript(
+            'var t = document.getElementById(decodeURIComponent('
+            f'"{target}")); if (t) {{ t.scrollIntoView(); }}')
 
 
 # Rules the page needs whatever the theme. The theme stylesheet comes after
@@ -166,6 +245,11 @@ PREVIEW_BASE_CSS = """
         img { max-height: 60vh; object-fit: contain; }
         img.yamep-capped { cursor: zoom-in; }
         img.yamep-expanded { max-height: none; cursor: zoom-out; }
+
+        /* Code keeps its own look inside a quote. */
+        blockquote pre, blockquote pre code {
+            font-style: normal; color: inherit;
+        }
 """
 
 IMAGE_JS = r"""
@@ -340,14 +424,20 @@ class MarkdownPreview(QWebEngineView):
         super().__init__()
         self.setup_preview()
         self.setPage(ExternalLinkPage(self))
+        settings = self.page().settings()
         # Needed for the copy tiles' execCommand("copy") fallback.
-        self.page().settings().setAttribute(
+        settings.setAttribute(
             QWebEngineSettings.JavascriptCanAccessClipboard, True)
+        # A page with a file:// base may not load images from the web without
+        # this. What it may do with the network is limited by PREVIEW_CSP.
+        settings.setAttribute(
+            QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
         self.installEventFilter(self)
 
         self._pending_top_line = None
         self._pending_callbacks = []
         self._base_url = QUrl.fromLocalFile(os.getcwd() + os.sep)
+        self._large_page_dir = None
         self.scrollSync = None
 
         # A single, permanent connection: connecting per render leaked one
@@ -364,6 +454,9 @@ class MarkdownPreview(QWebEngineView):
         if not path or not os.path.isdir(path):
             path = os.getcwd()
         self._base_url = QUrl.fromLocalFile(os.path.join(path, ''))
+
+    def base_url(self):
+        return self._base_url
 
     def scroll_to_line(self, line):
         """Scroll so that source line `line` (a float) is at the top."""
@@ -465,22 +558,29 @@ class MarkdownPreview(QWebEngineView):
         if on_finished:
             self._pending_callbacks.append(on_finished)
 
+        nonce = secrets.token_hex(16)
+        base_href = html_escape.escape(self._base_url.toString(), quote=True)
+
         html_full = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <meta http-equiv="Content-Security-Policy"
+          content="{PREVIEW_CSP.format(nonce=nonce)}">
+    <base href="{base_href}">
+    <script nonce="{nonce}">{web_channel_js()}</script>
     <style>
 {PREVIEW_BASE_CSS}
     </style>
     <style>
         {css}
+{highlight_css(css_file)}
     </style>
 </head>
 <body class="markdown-body">
     <div id="watermark">Preview</div>
     {html}
-    <script>
+    <script nonce="{nonce}">
         // Re-attach the bridge on every render: setHtml() replaces the
         // document, so objects fetched once at start-up do not survive.
         if (typeof qt !== "undefined" && qt.webChannelTransport) {{
@@ -510,7 +610,19 @@ class MarkdownPreview(QWebEngineView):
 </body>
 </html>"""
 
-        self.setHtml(html_full, self._base_url)
+        encoded_size = len(urllib.parse.quote(html_full.encode('utf-8')))
+        if encoded_size <= SET_HTML_LIMIT:
+            self.setHtml(html_full, self._base_url)
+        else:
+            self._load_large_page(html_full)
+
+    def _load_large_page(self, html_full):
+        if self._large_page_dir is None:
+            self._large_page_dir = QTemporaryDir()
+        path = self._large_page_dir.filePath('preview.html')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(html_full)
+        self.load(QUrl.fromLocalFile(path))
 
     def setup_scroll_channel(self):
         """

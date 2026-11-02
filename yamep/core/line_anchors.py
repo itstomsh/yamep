@@ -46,6 +46,10 @@ UNMARKABLE = re.compile(r'''^(?:
 # Lines that start a block even straight after another line.
 BLOCK_START = re.compile(r'^\s{0,3}(?:#{1,6}(?:\s|$)|[-*+]\s|\d+[.)]\s|>)')
 
+# Inline code that opens on a line and closes on a later one: a marker there
+# would be shown as text. Complete spans are removed first.
+CODE_SPAN = re.compile(r'(?<!`)(`+)(?!`).+?(?<!`)\1(?!`)')
+
 # Syntax that has to stay last on the line: an ATX heading's closing hashes
 # and an attr_list block.
 TRAILING_SYNTAX = re.compile(r'(\s+#+|\s*\{[^{}]*\})\s*$')
@@ -63,13 +67,14 @@ def add_line_markers(text, marker=SPAN_MARKER):
     """
     lines = []
     previous_blank = True
-    for number, line, in_fence in iter_source_lines(text):
-        if in_fence:
+    for number, line, literal in iter_source_lines(text):
+        if literal:
             lines.append(line)
             previous_blank = False
             continue
 
         if (not UNMARKABLE.match(line) and '|' not in line
+                and '`' not in CODE_SPAN.sub('', line)
                 and (previous_blank or BLOCK_START.match(line))):
             body = line.rstrip()
             # Trailing spaces stay last: two of them are a hard line break.

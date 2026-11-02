@@ -12,6 +12,7 @@ trove-classifiers==2025.3.19.19
 hatchling==1.27.0
 Markdown==3.7
 platformdirs==4.3.7
+Pygments==2.21.0
 pymdown-extensions==10.14.3
 shiboken6==6.8.2.1
 PySide6==6.8.2.1

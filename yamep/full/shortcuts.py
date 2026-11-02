@@ -26,6 +26,10 @@ class ShortcutManager:
         save_file_shortcut = QShortcut(QKeySequence("Ctrl+S"), self.parent)
         save_file_shortcut.activated.connect(self.parent.save_file)
 
+        # Save As (Ctrl+Shift+S)
+        save_as_shortcut = QShortcut(QKeySequence("Ctrl+Shift+S"), self.parent)
+        save_as_shortcut.activated.connect(self.parent.save_file_as)
+
         # New File (Ctrl+N)
         new_file_shortcut = QShortcut(QKeySequence("Ctrl+N"), self.parent)
         new_file_shortcut.activated.connect(self.parent.create_new_file)
