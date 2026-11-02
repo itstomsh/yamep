@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "yamep"
 version = "2.0.0"
-description = "Yet Another Markdown Editor in Python"
+description = "Yet Another Markdown Editor & Preview"
 authors = [{ name="tomsh", email="tomsh@disroot.org" }]
 readme = "README.md"
 license = "GPL-3.0-or-later"
