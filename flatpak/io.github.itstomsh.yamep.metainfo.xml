@@ -42,6 +42,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
   <launchable type="desktop-id">io.github.itstomsh.yamep.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="2.0.0" date="2026-11-02" />
     <release version="1.2.0" date="2026-09-18" />
   </releases>
 </component>

@@ -1400,7 +1400,7 @@ class YamepLite(QWidget):
 
             about_label = QLabel(
                 'yamep - Yet Another Markdown Editor & Preview\n'
-                'Version 1.2.0\n\n'
+                'Version 2.0.0\n\n'
                 'Created by tomsh\n'
                 'Website: github.com/itstomsh/yamep\n'
                 'License: GPL-3.0-or-later')

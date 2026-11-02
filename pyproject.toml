@@ -8,8 +8,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yamep"
-version = "1.2.0"
-description = "Lightweight Markdown Editor (Lite Version of Yamep)"
+version = "2.0.0"
+description = "Yet Another Markdown Editor in Python"
 authors = [{ name="tomsh", email="tomsh@disroot.org" }]
 readme = "README.md"
 license = "GPL-3.0-or-later"
