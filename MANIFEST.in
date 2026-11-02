@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 tomsh <tomsh@disroot.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+recursive-include yamep/core/resources/icons *.png
+recursive-include yamep/core/resources/themes *.css
+recursive-include yamep/core/resources *.png *.css *.qss

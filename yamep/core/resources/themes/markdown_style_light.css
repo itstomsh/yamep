@@ -1,0 +1,200 @@
+/*
+ * SPDX-FileCopyrightText: 2025-2026 tomsh <tomsh@disroot.org>
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+/* Overall Body */
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 14px;
+  color: #333;
+  background-color: #fafafa; /* Lighter off-white background */
+  margin: 20px;
+  line-height: 1.6;
+}
+
+/* Watermark styling */
+#watermark {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  font-size: 20pt;
+  font-weight: bold;
+  color: rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  z-index: 1000;
+}
+
+/* Headers */
+h1, h2, h3, h4, h5, h6 {
+  color: #007acc; /* Softer blue */
+  font-weight: 600;
+  margin-top: 1.2em;
+  margin-bottom: 0.5em;
+}
+
+/* Paragraphs */
+p {
+  margin: 0.8em 0;
+}
+
+/* Code Blocks */
+code, pre {
+  background-color: #f4f4f4; /* Light gray background */
+  color: #333;
+  font-family: Consolas, 'Courier New', monospace;
+  padding: 4px;
+  border-radius: 4px;
+}
+pre {
+  overflow: auto;
+  padding: 10px;
+  position: relative;
+}
+
+/* Style for the copy button */
+.copy-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: none; /* hidden until the code block is hovered */
+  align-items: center;
+  justify-content: center;
+  background: var(--tile-bg);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+/* Recolouring the tile variable also repaints the mask inside the glyph. */
+.copy-button:hover {
+  --tile-bg: var(--tile-hover);
+}
+
+pre:hover .copy-button {
+  display: flex;
+}
+
+/* Inline code styling */
+.inline-code {
+  position: relative;
+  display: inline-block;
+  padding-right: 22px; /* room for the copy tile */ /* leave space for the button */
+}
+
+.inline-code .copy-inline {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--tile-bg);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transform-origin: top right;
+}
+
+.inline-code .copy-inline svg {
+  width: 13px;
+  height: 13px;
+}
+
+.inline-code .copy-inline:hover {
+  --tile-bg: var(--tile-hover);
+}
+
+.inline-code:hover .copy-inline {
+  display: flex;
+}
+
+/* Links */
+a {
+  color: #007acc;
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+/* Blockquotes */
+blockquote {
+  border-left: 4px solid #d0d0d0; /* Light gray border */
+  background-color: #f9f9f9; /* Very light background */
+  color: #555;
+  padding: 10px 15px;
+  margin: 1em 0;
+  font-style: italic;
+}
+
+/* Tables */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+}
+th, td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+th {
+  background-color: #f0f0f0;
+  font-weight: bold;
+}
+tr:nth-child(even) {
+  background-color: #fcfcfc;
+}
+
+/* Task Lists */
+.markdown-body .task-list-item {
+  list-style-type: none !important;
+}
+.markdown-body .task-list-item input[type="checkbox"] {
+  margin: 0 4px 0.25em -20px;
+  vertical-align: middle;
+}
+.markdown-body .task-list-control {
+  display: inline;
+  position: relative;
+  color: #555;
+  cursor: pointer;
+}
+.markdown-body .task-list-control input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  z-index: -1;
+}
+.markdown-body .task-list-indicator {
+  position: absolute;
+  top: -8px;
+  left: -18px;
+  display: block;
+  width: 14px;
+  height: 14px;
+  background-color: #eee;
+  border-radius: 0.25rem;
+}
+.markdown-body .task-list-control input[type="checkbox"]:checked + .task-list-indicator::before {
+  display: block;
+  margin-top: -4px;
+  margin-left: 2px;
+  font-size: 16px;
+  line-height: 1;
+  content: "✔";
+  color: #1ebb52;
+}
+
+/* Images */
+img {
+  max-width: 95%;
+  height: auto;
+}

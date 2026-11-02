@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2025-2026 tomsh <tomsh@disroot.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+version = 1
+SPDX-PackageName = "yamep"
+SPDX-PackageDownloadLocation = "https://github.com/itstomsh/yamep"
+
+# Files that cannot carry a comment header: JSON has no comments, and the rest
+# are binaries or documents kept free of markup.
+[[annotations]]
+path = [
+    "LICENSE",
+    "README.md",
+    "tree.md",
+    "flatpak/*.json",
+    "flatpak/*.png",
+    "screenshots/*.png",
+    "yamep/core/resources/*.png",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2025-2026 tomsh <tomsh@disroot.org>"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# The toolbar icons are Google's Material Symbols, used unmodified.
+[[annotations]]
+path = "yamep/core/resources/icons/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Google LLC"
+SPDX-License-Identifier = "Apache-2.0"

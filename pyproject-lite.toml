@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2025-2026 tomsh <tomsh@disroot.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yamep-lite"
+version = "1.2.0"
+description = "Lightweight Markdown Editor (Lite Version of Yamep)"
+authors = [{ name="tomsh", email="tomsh@disroot.org" }]
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.9"
+dependencies = [
+    "PySide6",
+    "markdown",
+    "pymdown-extensions",
+    "platformdirs"
+]
+
+[project.urls]
+Homepage = "https://github.com/itstomsh/yamep"
+Source = "https://github.com/itstomsh/yamep"
+Issues = "https://github.com/itstomsh/yamep/issues"
+
+[project.scripts]
+yamep-lite = "yamep.lite.main:main"
+
+[tool.setuptools.packages.find]
+include = ["yamep*"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.uv]
+# Run from source (./run-full, ./run-lite); wheels are built by the build-*.sh scripts.
+package = false
+
+[dependency-groups]
+dev = ["build"]

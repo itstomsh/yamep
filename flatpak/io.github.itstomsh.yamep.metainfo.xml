@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+SPDX-FileCopyrightText: 2025-2026 tomsh <tomsh@disroot.org>
+
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+
+<component type="desktop-application">
+  <id>io.github.itstomsh.yamep</id>
+  <name>Yamep</name>
+  <summary>Markdown editor with a live preview</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="io.github.itstomsh">
+    <name>tomsh</name>
+  </developer>
+  <description>
+    <p>Yamep is a Markdown editor that shows a rendered preview beside the text as you type. Notes are plain Markdown files in a folder you choose, so they stay readable without Yamep and work with any file sync client.</p>
+    <p>Features:</p>
+    <ul>
+      <li>Preview that follows the editor line by line, however tall an image renders</li>
+      <li>Toolbar for headings, lists, tables, code, links and task lists</li>
+      <li>File tree for the folder you are working in</li>
+      <li>Atomic saves, and a prompt when a note is changed on disk by another program</li>
+      <li>Light, dark and blue themes</li>
+    </ul>
+  </description>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Editing a note with the preview beside it</caption>
+      <image type="source" width="1600" height="900">https://raw.githubusercontent.com/itstomsh/yamep/main/screenshots/full-preview.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The same note in the light theme</caption>
+      <image type="source" width="1600" height="900">https://raw.githubusercontent.com/itstomsh/yamep/main/screenshots/full-light.png</image>
+    </screenshot>
+  </screenshots>
+  <url type="homepage">https://github.com/itstomsh/yamep</url>
+  <url type="bugtracker">https://github.com/itstomsh/yamep/issues</url>
+  <url type="vcs-browser">https://github.com/itstomsh/yamep</url>
+  <launchable type="desktop-id">io.github.itstomsh.yamep.desktop</launchable>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="1.2.0" date="2026-09-18" />
+  </releases>
+</component>

@@ -1,0 +1,65 @@
+/*
+ * SPDX-FileCopyrightText: 2025-2026 tomsh <tomsh@disroot.org>
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+/* Light Theme - Clean White with Blue Accents */
+QWidget {
+    background-color: #F5F5F5;
+    color: #333333;
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 14px;
+}
+
+QMainWindow {
+    background-color: #F5F5F5;
+}
+
+QTextEdit, QTextBrowser {
+    background-color: #FFFFFF;
+    color: #333333;
+    border: 1px solid #D0D0D0;
+    border-radius: 4px;
+    padding: 8px;
+}
+
+QToolBar {
+    background-color: #E8E8E8;
+    border-bottom: 1px solid #D0D0D0;
+    spacing: 5px;
+    padding: 4px;
+}
+
+QToolButton {
+    background-color: #F0F0F0;
+    color: #333333;
+    border: 1px solid #D0D0D0;
+    border-radius: 4px;
+    padding: 6px;
+}
+
+QToolButton:hover {
+    background-color: #FFFFFF;
+    border-color: #4A90E2;
+}
+
+QComboBox, QTreeWidget {
+    background-color: #FFFFFF;
+    color: #333333;
+    border: 1px solid #D0D0D0;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+QTabWidget::pane {
+    border: 1px solid #D0D0D0;
+}
+
+QMessageBox {
+    background-color: #FFFFFF;
+}
+
+QMessageBox QLabel {
+    color: #333333;
+}

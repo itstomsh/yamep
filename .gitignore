@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: 2025-2026 tomsh <tomsh@disroot.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+venv/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Flatpak build output
+.flatpak-builder/
+.flatpak-build/
+build-dir/
+flatpak-build-dir/
+yamep-repo/
+*.flatpak
+
+# Editors and desktops
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Backup and temporary files, including the ones an interrupted build or an
+# atomic save can leave behind
+*~
+pyproject.toml.orig
+
+# Note: screenshots/ is deliberately tracked - the metainfo files point at
+# those files on raw.githubusercontent.com, so they have to be in the repo.

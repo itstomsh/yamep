@@ -1,0 +1,82 @@
+{
+  "id": "io.github.itstomsh.yamep.lite",
+  "runtime": "org.kde.Platform",
+  "runtime-version": "6.11",
+  "sdk": "org.kde.Sdk",
+  "base": "io.qt.PySide.BaseApp",
+  "base-version": "6.11",
+  "command": "yamep-lite",
+  "finish-args": [
+    "--filesystem=home",
+    "--share=ipc",
+    "--socket=fallback-x11",
+    "--socket=wayland",
+    "--device=dri"
+  ],
+  "modules": [
+    "pypi-deps.json",
+    {
+      "name": "desktop-entry",
+      "buildsystem": "simple",
+      "build-commands": [
+        "install -Dm644 io.github.itstomsh.yamep.lite.desktop /app/share/applications/io.github.itstomsh.yamep.lite.desktop",
+        "install -Dm644 io.github.itstomsh.yamep.lite.png /app/share/icons/hicolor/128x128/apps/io.github.itstomsh.yamep.lite.png",
+        "install -Dm644 io.github.itstomsh.yamep.lite.metainfo.xml /app/share/metainfo/io.github.itstomsh.yamep.lite.metainfo.xml"
+      ],
+      "sources": [
+        {
+          "type": "file",
+          "path": "io.github.itstomsh.yamep.lite.desktop"
+        },
+        {
+          "type": "file",
+          "path": "io.github.itstomsh.yamep.lite.png"
+        },
+        {
+          "type": "file",
+          "path": "io.github.itstomsh.yamep.lite.metainfo.xml"
+        }
+      ]
+    },
+    {
+      "name": "yamep-lite",
+      "buildsystem": "simple",
+      "build-commands": [
+        "cp pyproject-lite.toml pyproject.toml",
+        "pip3 install --no-build-isolation --prefix=/app ."
+      ],
+      "sources": [
+        {
+          "type": "dir",
+          "path": "../",
+          "skip": [
+            ".flatpak-build",
+            ".flatpak-builder",
+            ".git",
+            "build",
+            "build-dir",
+            "dist",
+            "flatpak",
+            "flatpak-build-dir",
+            "venv",
+            "yamep-full.flatpak",
+            "yamep-lite.flatpak",
+            "yamep-repo",
+            "yamep.egg-info",
+            "yamep_lite.egg-info"
+          ]
+        }
+      ]
+    }
+  ],
+  "cleanup-commands": [
+    "/app/cleanup-BaseApp.sh",
+    "rm -rfv /app/lib/libLLVM.so* /app/lib/libclang*.so* /app/lib/python3.*/site-packages/shiboken6_generator"
+  ],
+  "build-options": {
+    "env": {
+      "BASEAPP_REMOVE_WEBENGINE": "1",
+      "BASEAPP_DISABLE_NUMPY": "1"
+    }
+  }
+}

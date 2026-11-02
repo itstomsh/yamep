@@ -1,0 +1,65 @@
+/*
+ * SPDX-FileCopyrightText: 2025-2026 tomsh <tomsh@disroot.org>
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+/* Blue Theme - Navy Base with Teal Accents */
+QWidget {
+    background-color: #1A2B3C;
+    color: #E0E0E0;
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 14px;
+}
+
+QMainWindow {
+    background-color: #1A2B3C;
+}
+
+QTextEdit, QTextBrowser {
+    background-color: #2A3B4C;
+    color: #FFFFFF;
+    border: 1px solid #3A4B5C;
+    border-radius: 4px;
+    padding: 8px;
+}
+
+QToolBar {
+    background-color: #243546;
+    border-bottom: 1px solid #3A4B5C;
+    spacing: 5px;
+    padding: 4px;
+}
+
+QToolButton {
+    background-color: #3A4B5C;
+    color: #E0E0E0;
+    border: 1px solid #4A5B6C;
+    border-radius: 4px;
+    padding: 6px;
+}
+
+QToolButton:hover {
+    background-color: #4A5B6C;
+    border-color: #2ECC71;
+}
+
+QComboBox, QTreeWidget {
+    background-color: #2A3B4C;
+    color: #FFFFFF;
+    border: 1px solid #3A4B5C;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+QTabWidget::pane {
+    border: 1px solid #3A4B5C;
+}
+
+QMessageBox {
+    background-color: #2A3B4C;
+}
+
+QMessageBox QLabel {
+    color: #FFFFFF;
+}

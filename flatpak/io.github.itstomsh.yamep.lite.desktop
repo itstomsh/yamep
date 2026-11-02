@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2025-2026 tomsh <tomsh@disroot.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+[Desktop Entry]
+Type=Application
+Name=Yamep Lite
+GenericName=Markdown Editor
+Comment=Write Markdown notes with a live preview
+Exec=yamep-lite %f
+Icon=io.github.itstomsh.yamep.lite
+Terminal=false
+Categories=Utility;TextEditor;
+Keywords=Markdown;Notes;Editor;Preview;md;
+MimeType=text/markdown;text/x-markdown;
+StartupNotify=true
+StartupWMClass=YamepLite

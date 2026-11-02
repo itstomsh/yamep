@@ -1,0 +1,183 @@
+/*
+ * SPDX-FileCopyrightText: 2025-2026 tomsh <tomsh@disroot.org>
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+/* Blue Dark Theme for Markdown Preview */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 14px;
+    color: #ffffff; 
+    background-color: #20232a; 
+    margin: 10px;
+    padding: 10px;
+    line-height: 1.6;
+}
+
+/* Watermark styling */
+#watermark {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    font-size: 20pt;
+    font-weight: bold;
+    color: rgba(172, 167, 167, 0.3);
+    pointer-events: none;
+    z-index: 1000;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+    width: 15px;
+    height: 10px;
+}
+::-webkit-scrollbar-track {
+    background: #282626;
+}
+::-webkit-scrollbar-thumb {
+    background: #100f0f;
+    border-radius: 6px;
+    transition: background 0.2s ease;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Headers */
+h1, h2, h3, h4, h5, h6 {
+    color: #ffffff;
+    margin-top: 1.2em;
+    margin-bottom: 0.5em;
+}
+
+/* Code Blocks */
+code, pre {
+    background-color: #3b5998;
+    color: #ffffff;
+    font-family: Consolas, 'Courier New', monospace;
+    padding: 6px;
+    border-radius: 4px;
+}
+pre {
+    overflow: auto;
+    padding: 10px;
+    position: relative;
+}
+
+/* Style for the copy button */
+.copy-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: none; /* hidden until the code block is hovered */
+  align-items: center;
+  justify-content: center;
+  background: var(--tile-bg);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+  
+  /* Optionally, show the copy button when hovering the pre element */
+  /* Recolouring the tile variable also repaints the mask inside the glyph. */
+.copy-button:hover {
+  --tile-bg: var(--tile-hover);
+}
+
+pre:hover .copy-button {
+  display: flex;
+}
+  
+  /* Inline code styling */
+  .inline-code {
+    position: relative;
+    display: inline-block;
+    padding-right: 22px; /* room for the copy tile */ /* leave space for the button */
+  }
+  
+  .inline-code .copy-inline {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--tile-bg);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transform-origin: top right;
+}
+  
+  .inline-code .copy-inline svg {
+  width: 13px;
+  height: 13px;
+}
+
+.inline-code .copy-inline:hover {
+  --tile-bg: var(--tile-hover);
+}
+
+.inline-code:hover .copy-inline {
+  display: flex;
+}
+
+/* Links */
+a {
+    color: #aad4ff;
+    text-decoration: none;
+}
+a:hover {
+    text-decoration: underline;
+}
+
+/* Blockquotes */
+blockquote {
+    border-left: 4px solid #aad4ff;
+    background-color: #3b5998;
+    color: #ffffff;
+    padding: 10px 15px;
+    margin: 1em 0;
+    font-style: italic;
+}
+
+/* Tables */
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1em 0;
+    border: 1px solid #8bb0e8;
+}
+th, td {
+    border: 1px solid #8bb0e8;
+    padding: 8px;
+}
+th {
+    background-color: #1d2e53;
+    color: #ffffff;
+}
+tr:nth-child(even) {
+    background-color: #4b6eaf;
+}
+
+/* Task Lists */
+li.task-list-item {
+    list-style-type: none;
+    margin-left: 0;
+    padding-left: 0;
+    font-size: 16px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Images */
+img {
+    max-width: 95%;
+    height: auto;
+}
