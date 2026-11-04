@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yamep"
-version = "2.0.0"
+version = "2.1.0"
 description = "Yet Another Markdown Editor & Preview"
 authors = [{ name="tomsh", email="tomsh@disroot.org" }]
 readme = "README.md"
