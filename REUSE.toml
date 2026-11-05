@@ -12,6 +12,7 @@ SPDX-PackageDownloadLocation = "https://github.com/itstomsh/yamep"
 path = [
     "LICENSE",
     "README.md",
+    "ROADMAP.md",
     "tree.md",
     "flatpak/*.json",
     "flatpak/*.png",
