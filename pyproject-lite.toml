@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yamep-lite"
-version = "2.1.0"
+version = "2.1.1"
 description = "Lightweight Markdown Editor (Lite Version of Yamep)"
 authors = [{ name="tomsh", email="tomsh@disroot.org" }]
 readme = "README.md"
