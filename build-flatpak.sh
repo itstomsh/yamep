@@ -59,7 +59,11 @@ for variant in "${variants[@]}"; do
 
     if [ "$bundle" = yes ]; then
         echo "==> Writing $bundle_file"
-        flatpak build-bundle "$REPO" "$bundle_file" "$app_id"
+        # The runtime is not in the bundle. Naming Flathub lets
+        # "flatpak install" offer to fetch it on a system without it.
+        flatpak build-bundle \
+            --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+            "$REPO" "$bundle_file" "$app_id"
         du -h "$bundle_file" | sed 's/^/    /'
     fi
     if [ "$install" = yes ]; then

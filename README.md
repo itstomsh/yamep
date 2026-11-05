@@ -100,6 +100,10 @@ the result and `--no-bundle` to skip writing the `.flatpak` bundle. Each variant
 picks its own packaging metadata inside the build sandbox, so the two can be
 built in any order.
 
+A bundle, such as the ones attached to a GitHub release, installs with
+`flatpak install --user yamep-lite.flatpak`. It points to Flathub for the KDE
+runtime, so `flatpak install` offers to fetch the runtime if it is missing.
+
 ### From source
 
 Python 3.9 or newer, and PySide6, Markdown, pymdown-extensions, platformdirs and,
