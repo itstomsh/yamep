@@ -39,7 +39,8 @@ done
 [ ${#variants[@]} -gt 0 ] || usage
 
 command -v flatpak-builder >/dev/null || {
-    echo "flatpak-builder is not installed (pacman -S flatpak-builder)" >&2
+    echo "flatpak-builder is not installed (Fedora: dnf install flatpak-builder," \
+         "Arch: pacman -S flatpak-builder)" >&2
     exit 1
 }
 
