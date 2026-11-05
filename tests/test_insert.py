@@ -93,3 +93,41 @@ def test_header_replaces_an_existing_one(qapp, variant):
     editor, actions = make(variant, '# Title')
     actions.make_header(3)
     assert editor.toPlainText() == '### Title'
+
+
+@variants
+def test_quote_applies_to_the_selection(qapp, variant):
+    editor, actions = make(variant, 'a\n\nb\nrest', 0, 4)
+    actions.make_quote()
+    assert editor.toPlainText() == '> a\n>\n> b\nrest'
+
+
+@variants
+def test_fenced_code_from_part_of_a_line_gets_lines_of_its_own(
+        qapp, variant):
+    editor, actions = make(variant, 'run ls now', 4, 6)
+    actions.make_fenced_code()
+    assert editor.toPlainText() == 'run \n\n```\nls\n```\n\n now'
+
+
+@variants
+def test_table_leaves_the_cursor_on_the_data_row(qapp, variant):
+    editor, actions = make(variant, 'A\n\nB', 1)
+    actions.make_table()
+    text = editor.toPlainText()
+    assert text.endswith('| Cell 1   | Cell 2   |\n\nB')
+    assert text[:editor.textCursor().position()].endswith('Cell 2   |')
+
+
+@variants
+def test_text_right_below_a_table_stays_out_of_it(qapp, variant):
+    editor, actions = make(variant, 'A\nB', 1)
+    actions.make_table()
+    assert editor.toPlainText().endswith('| Cell 2   |\n\nB')
+
+
+@variants
+def test_italics_without_a_selection(qapp, variant):
+    editor, actions = make(variant, 'x', 1)
+    actions.make_italics()
+    assert editor.toPlainText() == 'x*italic*'

@@ -34,6 +34,13 @@ FileSignature = namedtuple('FileSignature', 'device inode size mtime_ns')
 # Line ending of a file that has none yet.
 DEFAULT_NEWLINE = '\n'
 
+# What a file looks like on disk beyond its text: its line ending, and
+# whether it starts with a byte order mark, as Windows editors like to write.
+FileFormat = namedtuple('FileFormat', 'newline bom')
+DEFAULT_FORMAT = FileFormat(DEFAULT_NEWLINE, False)
+
+BOM = '\ufeff'
+
 # How long a changed file has to stay unchanged before it is acted on. An
 # in-place writer truncates the file first and fills it afterwards; reloading
 # in between would put an empty or partial note into the editor.
@@ -62,11 +69,13 @@ def _dominant_newline(raw):
 
 def read_document(path, encoding='utf-8'):
     """
-    Return (text, signature, newline) for `path`.
+    Return (text, signature, file_format) for `path`.
 
-    `text` always uses \\n, which is what the editor works with; `newline` is
-    the file's own line ending, so a save can put it back. Translating it
-    away for good rewrote every line of a Windows note in the sync history.
+    `text` always uses \\n and has no byte order mark, which is what the
+    editor and the renderer work with; `file_format` records the file's own
+    line ending and mark, so a save can put them back. Translating them away
+    for good rewrote every line of a Windows note in the sync history, and a
+    mark left in the text hid the heading on the first line.
 
     The signature is taken before reading, so a write that races the read
     leaves the file looking changed instead of slipping by unnoticed.
@@ -74,8 +83,11 @@ def read_document(path, encoding='utf-8'):
     signature = file_signature(path)
     with open(path, 'r', encoding=encoding, newline='') as f:
         raw = f.read()
+    bom = raw.startswith(BOM)
+    if bom:
+        raw = raw[len(BOM):]
     text = raw.replace('\r\n', '\n').replace('\r', '\n')
-    return text, signature, _dominant_newline(raw)
+    return text, signature, FileFormat(_dominant_newline(raw), bom)
 
 
 def read_text(path, encoding='utf-8'):
@@ -145,7 +157,8 @@ def _write_in_place(target, data):
         return _signature_of(os.fstat(f.fileno()))
 
 
-def atomic_write_text(path, text, encoding='utf-8', newline=DEFAULT_NEWLINE):
+def atomic_write_text(path, text, encoding='utf-8', newline=DEFAULT_NEWLINE,
+                      bom=False):
     """
     Replace the contents of `path` with `text` in a single step.
 
@@ -159,7 +172,8 @@ def atomic_write_text(path, text, encoding='utf-8', newline=DEFAULT_NEWLINE):
     writable note in a folder that only allows changing existing files.
     """
     # Encoded first, so text that cannot be written costs nothing on disk.
-    data = text.replace('\n', newline).encode(encoding)
+    data = ((BOM if bom else '') + text.replace('\n', newline)).encode(
+        encoding)
     target = os.path.realpath(path)
     directory = os.path.dirname(target)
     try:
@@ -227,7 +241,7 @@ class DocumentFileGuard(QObject):
         self._link = None
         self._name = ''
         self._known = None
-        self._newline = DEFAULT_NEWLINE
+        self._format = DEFAULT_FORMAT
         self._pending = _UNSET
         self._prompting = False
 
@@ -242,9 +256,9 @@ class DocumentFileGuard(QObject):
 
     def open(self, path):
         """Read `path`, start guarding it and return its text."""
-        text, signature, newline = read_document(path)
+        text, signature, file_format = read_document(path)
         self.track(path, signature)
-        self._newline = newline
+        self._format = file_format
         return text
 
     def save(self, path, text):
@@ -258,9 +272,10 @@ class DocumentFileGuard(QObject):
         guarded = self._is_guarded(path)
         if guarded and not self._confirm_overwrite(text):
             return False
-        newline = self._newline if guarded else DEFAULT_NEWLINE
-        self.track(path, atomic_write_text(path, text, newline=newline))
-        self._newline = newline
+        file_format = self._format if guarded else DEFAULT_FORMAT
+        self.track(path, atomic_write_text(
+            path, text, newline=file_format.newline, bom=file_format.bom))
+        self._format = file_format
         return True
 
     def track(self, path, signature=None):
@@ -272,7 +287,7 @@ class DocumentFileGuard(QObject):
         # The name it was opened by: a symlink can be pointed elsewhere.
         self._link = os.path.abspath(path)
         self._name = os.path.basename(path)
-        self._newline = DEFAULT_NEWLINE
+        self._format = DEFAULT_FORMAT
         self._known = (
             file_signature(self._path) if signature is None else signature)
         self._pending = _UNSET
@@ -357,7 +372,7 @@ class DocumentFileGuard(QObject):
 
     def _on_changed(self):
         try:
-            text, signature, newline = read_document(self._path)
+            text, signature, file_format = read_document(self._path)
         except (OSError, UnicodeError) as e:
             logging.warning(f"Could not read changed file {self._path}: {e}")
             return
@@ -366,13 +381,13 @@ class DocumentFileGuard(QObject):
         if text == document_text(self._editor):
             # Touched, or saved elsewhere with identical content.
             self._known = signature
-            self._newline = newline
+            self._format = file_format
             document.setModified(False)
             return
 
         if not document.isModified():
             self._replace_text(text, signature)
-            self._newline = newline
+            self._format = file_format
             self.notice.emit(f"{self._name} changed on disk and was reloaded")
             return
 
@@ -385,12 +400,12 @@ class DocumentFileGuard(QObject):
         if reload:
             # Read again: the file may have moved on while the dialog was up.
             try:
-                text, signature, newline = read_document(self._path)
+                text, signature, file_format = read_document(self._path)
             except (OSError, UnicodeError) as e:
                 logging.warning(f"Could not reload {self._path}: {e}")
                 return
             self._replace_text(text, signature)
-            self._newline = newline
+            self._format = file_format
             self.notice.emit(
                 f"{self._name} reloaded - Ctrl+Z brings your edits back")
         else:

@@ -206,6 +206,11 @@ COPY_BUTTONS_JS = r"""
 
 
 class ExternalLinkPage(QWebEnginePage):
+    def __init__(self, view):
+        super().__init__(view)
+        # Qt 6 pages have no view(); the base URL lives on the view.
+        self._view = view
+
     def acceptNavigationRequest(self, url, nav_type, is_main_frame):
         # The preview only ever shows what the application loads into it. A
         # <meta> refresh in a note, for one, must not replace the page.
@@ -213,24 +218,20 @@ class ExternalLinkPage(QWebEnginePage):
             return super().acceptNavigationRequest(
                 url, nav_type, is_main_frame)
         if nav_type == QWebEnginePage.NavigationTypeLinkClicked:
-            # The <base> tag makes `#name` a link to the note's folder, so
-            # one that points back at this page has to be caught here.
-            if url.hasFragment() and self._is_this_page(url):
-                self.jump_to_fragment(url.fragment())
-            else:
+            # The <base> tag makes `#name` a link to the note's folder. The
+            # page scrolls to targets it has itself (FRAGMENT_JS); one that
+            # still arrives here points nowhere, and is no file to open.
+            if not (url.hasFragment() and self._is_this_page(url)):
                 open_external(url)
         return False
 
     def _is_this_page(self, url):
-        base = self.view().base_url() if self.view() else QUrl()
-        return url.adjusted(QUrl.RemoveFragment) in (base, self.url())
-
-    def jump_to_fragment(self, fragment):
-        # Quoted, so that the fragment cannot end the string it sits in.
-        target = urllib.parse.quote(fragment)
-        self.runJavaScript(
-            'var t = document.getElementById(decodeURIComponent('
-            f'"{target}")); if (t) {{ t.scrollIntoView(); }}')
+        # Compared as text: PySide rejects QUrl.RemoveFragment in adjusted().
+        def without_fragment(u):
+            return u.toString().split('#', 1)[0]
+        return without_fragment(url) in (
+            without_fragment(self._view.base_url()),
+            without_fragment(self.url()))
 
 
 # Rules the page needs whatever the theme. The theme stylesheet comes after
@@ -276,6 +277,24 @@ IMAGE_JS = r"""
                 yamepMarkCapped(img);
             } else if (img.classList.contains("yamep-capped")) {
                 img.classList.replace("yamep-capped", "yamep-expanded");
+            }
+        });
+"""
+
+FRAGMENT_JS = r"""
+        // Links within the note, such as footnotes and [see](#setup), scroll
+        // here rather than navigate. As a navigation, the <base> tag would
+        // aim them at the note's folder, and once a large note is loaded from
+        // a file that is another page.
+        document.addEventListener("click", function (e) {
+            var a = e.target.closest ? e.target.closest('a[href^="#"]') : null;
+            if (!a) { return; }
+            var id = a.getAttribute("href").slice(1);
+            try { id = decodeURIComponent(id); } catch (err) {}
+            var target = document.getElementById(id);
+            if (target) {
+                e.preventDefault();
+                target.scrollIntoView();
             }
         });
 """
@@ -524,6 +543,8 @@ class MarkdownPreview(QWebEngineView):
                 'pymdownx.tilde',
                 'pymdownx.caret',
                 'pymdownx.tasklist',
+                # Ids on headings, so that [see](#setup) has somewhere to go.
+                'markdown.extensions.toc',
             ],
             extension_configs={
                 # Without this the checkboxes render disabled, so a task
@@ -593,6 +614,7 @@ class MarkdownPreview(QWebEngineView):
 
         var YAMEP_LINE_COUNT = {line_count};
 {IMAGE_JS}
+{FRAGMENT_JS}
 {TASK_JS}
 {LINE_SYNC_JS}
 

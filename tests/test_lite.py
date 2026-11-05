@@ -86,10 +86,47 @@ def test_save_as_updates_preview_config_and_tree(
 
     assert hrefs(window.live_preview.toHtml())[0].endswith('/b/p.png')
     assert window.config_manager.get_value('last_opened_file') == str(target)
-    root = window.file_tree.topLevelItem(0)
+    folder = window.file_tree.topLevelItem(0).child(1)
+    folder.setExpanded(True)
     assert 'copy.md' in [
-        root.child(1).child(i).text(0)
-        for i in range(root.child(1).childCount())]
+        folder.child(i).text(0) for i in range(folder.childCount())]
+
+
+def tree_names(item):
+    return [item.child(i).text(0) for i in range(item.childCount())]
+
+
+def test_file_tree_lists_folders_when_they_are_opened(window, tmp_path):
+    deep = tmp_path / 'a' / 'b'
+    deep.mkdir(parents=True)
+    (deep / 'n.md').write_text('x')
+    (tmp_path / 'empty').mkdir()
+    (tmp_path / 'loop').symlink_to(tmp_path)
+    window.populate_file_tree(str(tmp_path))
+    root = window.file_tree.topLevelItem(0)
+    assert tree_names(root) == ['a', 'empty', 'loop']
+    a = root.child(0)
+    assert a.childCount() == 0
+    a.setExpanded(True)
+    assert tree_names(a) == ['b']
+    a.child(0).setExpanded(True)
+    assert tree_names(a.child(0)) == ['n.md']
+    # A symlink back up the tree is listed one level at a time, not forever.
+    root.child(2).setExpanded(True)
+    assert tree_names(root.child(2)) == ['a', 'empty', 'loop']
+
+
+def test_file_tree_reopens_saved_folders(window, tmp_path):
+    deep = tmp_path / 'a' / 'b'
+    deep.mkdir(parents=True)
+    (deep / 'n.md').write_text('x')
+    window.populate_file_tree(str(tmp_path))
+    root = window.file_tree.topLevelItem(0)
+    root.child(0).setExpanded(True)
+    root.child(0).child(0).setExpanded(True)
+    window.populate_file_tree(str(tmp_path))
+    b = window.file_tree.topLevelItem(0).child(0).child(0)
+    assert b.isExpanded() and tree_names(b) == ['n.md']
 
 
 def test_fenced_code_in_a_quote_shows_no_markers(window):
@@ -220,3 +257,12 @@ def test_broken_config_does_not_stop_the_start(qapp, dialogs):
     config_path.write_text('{"window_geometry": "x", "expanded_items": 3}')
     YamepLite().close()
     os.unlink(config_path)
+
+
+def test_link_to_a_heading_scrolls_to_it(window):
+    window.resize(900, 500)
+    render(window, '[go](#far-away)\n\n' + 'filler\n\n' * 200
+           + '## Far away\n')
+    window.live_preview.verticalScrollBar().setValue(0)
+    window.open_image(QUrl('#far-away'))
+    assert window.live_preview.verticalScrollBar().value() > 0

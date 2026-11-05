@@ -312,3 +312,23 @@ def test_command_line_file_that_does_not_exist_yet(qapp, dialogs, tmp_path):
     assert path.read_text() == 'hello'
     window.close()
     assert QApplication.instance()
+
+
+def test_heading_has_an_id_to_link_to(full):
+    full.show('[go](#far-away)\n\n## Far away\n')
+    assert full.js('document.getElementById("far-away") !== null') is True
+
+
+def test_footnote_link_in_a_large_document(
+        full, opened, dialogs, tmp_path):
+    note = tmp_path / 'big.md'
+    note.write_text('x')
+    full.window.open_file_in_editor(str(note))
+    QTest.qWait(500)
+    filler = ('word ' * 3000 + '\n\n') * (SET_HTML_LIMIT // 15000 + 10)
+    full.show('Text[^1]\n\n' + filler + '[^1]: note\n')
+    assert full.js('window.location.protocol') == 'file:'
+    full.click('a.footnote-ref')
+    assert opened == []
+    assert full.js('window.scrollY') > 0
+    assert not dialogs.errors

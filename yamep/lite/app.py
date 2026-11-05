@@ -63,6 +63,9 @@ MAX_BLOCK_MARGIN_EM = 0.3
 
 IMAGE_EXTENSIONS = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.svg', '.webp')
 
+# Marks a folder in the file tree whose contents are not listed yet.
+UNLISTED_ROLE = Qt.UserRole + 1
+
 URI_SCHEME = re.compile(r'^[a-zA-Z][a-zA-Z0-9+.-]+:')
 
 
@@ -318,7 +321,7 @@ class YamepLite(QWidget):
         self.file_tree.setHeaderLabel('Files and Folders')
         self.file_tree.itemDoubleClicked.connect(self.open_file_in_editor)
         folder_layout.addWidget(self.file_tree)
-        self.file_tree.itemExpanded.connect(self.save_expanded_state)
+        self.file_tree.itemExpanded.connect(self.on_item_expanded)
         self.file_tree.itemCollapsed.connect(self.save_expanded_state)
 
         # Action Buttons
@@ -790,6 +793,8 @@ class YamepLite(QWidget):
                 TasklistExtension(),
                 ImageLinkExtension(base_dir),
                 'markdown.extensions.sane_lists',
+                # Ids on headings, so that [see](#setup) has somewhere to go.
+                'markdown.extensions.toc',
             ],
         )
 
@@ -1083,24 +1088,14 @@ class YamepLite(QWidget):
 
         self.restore_expanded_items(expanded_items)
 
-    def add_items(self, parent_item, path, visited=None):
+    def add_items(self, parent_item, path):
         """
-        Recursively add files and folders to the file tree.
+        List one folder in the file tree: its sub-folders and Markdown files.
 
-        Directories are tracked by their real path so a symlink pointing back
-        up the tree cannot recurse forever, and a directory we may not read is
-        listed without its contents instead of raising PermissionError.
+        Sub-folders are filled in only when they are opened. Walking the whole
+        tree up front froze the window for half a minute on a home folder,
+        and went on through symlinks into folders outside it, such as /run.
         """
-        if visited is None:
-            visited = set()
-        try:
-            real_path = os.path.realpath(path)
-        except OSError:
-            return
-        if real_path in visited:
-            return
-        visited.add(real_path)
-
         try:
             item_names = sorted(os.listdir(path))
         except OSError as e:
@@ -1112,10 +1107,25 @@ class YamepLite(QWidget):
             if os.path.isdir(item_path):
                 item = QTreeWidgetItem(parent_item, [item_name])
                 item.setData(0, Qt.UserRole, item_path)
-                self.add_items(item, item_path, visited)
+                # Shown as expandable until opening it shows otherwise.
+                item.setData(0, UNLISTED_ROLE, True)
+                item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
             elif item_name.lower().endswith('.md'):
                 item = QTreeWidgetItem(parent_item, [item_name])
                 item.setData(0, Qt.UserRole, item_path)
+
+    def list_folder_item(self, item):
+        """Fill in a folder of the tree the first time it is opened."""
+        if not item.data(0, UNLISTED_ROLE):
+            return
+        item.setData(0, UNLISTED_ROLE, False)
+        self.add_items(item, item.data(0, Qt.UserRole))
+        item.setChildIndicatorPolicy(
+            QTreeWidgetItem.DontShowIndicatorWhenChildless)
+
+    def on_item_expanded(self, item):
+        self.list_folder_item(item)
+        self.save_expanded_state()
 
     def get_expanded_items(self):
         """Get expanded state of all items in file tree."""
@@ -1137,6 +1147,8 @@ class YamepLite(QWidget):
         """Restore expanded state of items in file tree."""
         def traverse_and_restore(item):
             if item.data(0, Qt.UserRole) in expanded_items:
+                # Listed first, so that its own open folders are found.
+                self.list_folder_item(item)
                 item.setExpanded(True)
             for i in range(item.childCount()):
                 traverse_and_restore(item.child(i))

@@ -30,6 +30,7 @@ class Dialogs:
         self.answers = []
         self.asked = []
         self.warnings = []
+        self.errors = []
 
     def question(self, _parent, title, *_args, **_kwargs):
         self.asked.append(title)
@@ -38,12 +39,17 @@ class Dialogs:
     def warning(self, _parent, _title, text, *_args):
         self.warnings.append(text)
 
+    def critical(self, _parent, _title, text, *_args):
+        # The window's exception handler: modal, it would hang the suite.
+        self.errors.append(text)
+
 
 @pytest.fixture
 def dialogs(monkeypatch):
     fake = Dialogs()
     monkeypatch.setattr(QMessageBox, 'question', fake.question)
     monkeypatch.setattr(QMessageBox, 'warning', fake.warning)
+    monkeypatch.setattr(QMessageBox, 'critical', fake.critical)
     return fake
 
 

@@ -45,8 +45,18 @@ def test_saving_keeps_every_byte(guard, editor, tmp_path, raw):
 def test_read_document_normalises_and_reports_newline(tmp_path):
     path = tmp_path / 'n.md'
     path.write_bytes(b'a\r\nb\r\nc\n')
-    text, _signature, newline = read_document(path)
-    assert (text, newline) == ('a\nb\nc\n', '\r\n')
+    text, _signature, file_format = read_document(path)
+    assert (text, file_format.newline) == ('a\nb\nc\n', '\r\n')
+
+
+def test_byte_order_mark_stays_out_of_the_text_and_in_the_file(
+        guard, editor, tmp_path):
+    path = tmp_path / 'windows.md'
+    raw = '\ufeff# Title\r\n\r\ntext\r\n'.encode('utf-8')
+    path.write_bytes(raw)
+    text = guard.open(path)
+    assert text == '# Title\n\ntext\n'
+    assert round_trip(guard, editor, path) == raw
 
 
 def test_save_as_elsewhere_does_not_carry_old_file_state(

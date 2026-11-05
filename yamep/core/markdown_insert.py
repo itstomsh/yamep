@@ -18,12 +18,13 @@ def next_footnote_number(editor):
     return max(used) + 1 if used else 1
 
 
-def prefix_selected_lines(editor, prefix_for):
+def prefix_selected_lines(editor, prefix_for, blank_prefix=None):
     """
     Start each selected line with `prefix_for(n)`, as one undoable edit.
 
-    n counts the lines that are not blank. A selection ending at the very
-    start of a line does not include that line.
+    n counts the lines that are not blank. Blank lines get `blank_prefix`, or
+    are left alone without one. A selection ending at the very start of a
+    line does not include that line.
     """
     cursor = editor.textCursor()
     document = editor.document()
@@ -36,10 +37,14 @@ def prefix_selected_lines(editor, prefix_for):
     count = 0
     while True:
         if block.text().strip():
+            prefix = prefix_for(count)
+            count += 1
+        else:
+            prefix = blank_prefix
+        if prefix:
             edit = QTextCursor(cursor)
             edit.setPosition(block.position())
-            edit.insertText(prefix_for(count))
-            count += 1
+            edit.insertText(prefix)
         if block == last:
             break
         block = block.next()
@@ -56,6 +61,10 @@ def number_prefix(index):
 
 def task_prefix(_index):
     return "- [ ] "
+
+
+def quote_prefix(_index):
+    return "> "
 
 
 def collapse_to_selection_end(cursor):
@@ -162,8 +171,25 @@ def make_fenced_code(editor):
     cursor = editor.textCursor()
 
     if cursor.hasSelection():
-        selected_text = cursor.selectedText()
-        cursor.insertText(f"```\n{selected_text}\n```")
+        # A fence only counts at the start of its own line, and next to a
+        # paragraph it ends up inside it: the block gets blank lines around.
+        document = editor.document()
+        start, end = cursor.selectionStart(), cursor.selectionEnd()
+        first, last = document.findBlock(start), document.findBlock(end)
+        if start > first.position():
+            before = '\n\n'
+        elif first.previous().isValid() and first.previous().text().strip():
+            before = '\n'
+        else:
+            before = ''
+        if end < last.position() + last.length() - 1:
+            after = '\n\n'
+        elif last.next().isValid() and last.next().text().strip():
+            after = '\n'
+        else:
+            after = ''
+        cursor.insertText(
+            f"{before}```\n{cursor.selectedText()}\n```{after}")
     else:
         ensure_blank_line_before_block(cursor)
         cursor.insertText("```\n\n```")
@@ -190,30 +216,32 @@ def make_image(editor):
     make_image_syntax(editor)
 
 
+TABLE = (
+    "| Header 1 | Header 2 |\n"
+    "|----------|----------|\n"
+    "| Cell 1   | Cell 2   |"
+)
+
+
 def make_table(editor):
     editor.setFocus()
     cursor = editor.textCursor()
 
     # A table has nowhere to put arbitrary text, so it goes below it.
     collapse_to_selection_end(cursor)
+    cursor.beginEditBlock()
     ensure_blank_line_before_block(cursor)
+    cursor.insertText(TABLE)
+    data_row_end = cursor.position()
 
-    table = (
-        "| Header 1 | Header 2 |\n"
-        "|----------|----------|\n"
-        "| Cell 1   | Cell 2   |"
-    )
-    cursor.insertText(table + "\n")
-
+    # Text straight below would become another row of the table.
     next_block = cursor.block().next()
-    if next_block.isValid() and next_block.text().strip() == "":
-        cursor.movePosition(QTextCursor.EndOfBlock)
-        cursor.movePosition(QTextCursor.NextBlock)
-        cursor.select(QTextCursor.BlockUnderCursor)
-        cursor.removeSelectedText()
+    if next_block.isValid() and next_block.text().strip():
+        cursor.insertText("\n")
+    cursor.endEditBlock()
 
-    cursor.movePosition(QTextCursor.Up, QTextCursor.MoveAnchor, 1)
-    cursor.movePosition(QTextCursor.EndOfLine)
+    # On the data row, ready to be filled in.
+    cursor.setPosition(data_row_end)
     editor.setTextCursor(cursor)
 
 
@@ -265,6 +293,10 @@ def make_footnote(editor):
 def make_quote(editor):
     editor.setFocus()
     cursor = editor.textCursor()
+    if cursor.hasSelection():
+        # A bare '>' keeps a paragraph break inside the same quote.
+        prefix_selected_lines(editor, quote_prefix, blank_prefix='>')
+        return
     ensure_blank_line_before_block(cursor)
     cursor.insertText("> ")
     editor.setTextCursor(cursor)

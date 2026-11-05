@@ -36,6 +36,7 @@ full build if you want images and the more faithful preview.
   had expanded
 - Tables, fenced code with syntax highlighting, task lists with checkboxes,
   footnotes, strikethrough and insert marks
+- Links to headings within a note, such as `[Setup](#setup)`
 - Copy button on every code block
 - Task lists you can tick in the preview: the checkbox edits the line it came
   from, as one undoable change
@@ -53,7 +54,8 @@ Notes often live in a folder something else is writing to. Yamep handles that:
 
 - **Saves are atomic.** The text goes to a temporary file that is then renamed
   over the note, so a sync client never uploads a half-written file. File
-  permissions and line endings are kept, and a symlinked note stays a symlink.
+  permissions, line endings and a byte order mark are kept, and a symlinked
+  note stays a symlink.
   A hard-linked note, or one in a folder that only allows changing existing
   files, is written in place instead, because a rename cannot serve those.
 - **Changes made on disk are noticed.** If a note changes while it is open and
